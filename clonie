@@ -1,0 +1,3425 @@
+#!/usr/bin/env bash
+#
+# clonie – Festplatten/Partitionen klonen, imagen, recovern
+# Copyright (C) 2026 cvinz78
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+set -Eeuo pipefail
+
+VERSION="6.2"
+PROGRAM_NAME="$(basename "${CLONIE_ORIG_ARG0:-$0}")"
+BLOCK_SIZE="16M"
+
+SPRACHE="DE"
+
+_lang_catalog() {
+    cat <<'LANG_SED'
+s|Fehler: temporäre Datei konnte nicht erstellt werden.|Error: could not create temporary file.|
+s|Fehler: englische Übersetzungskopie konnte nicht erstellt werden.|Error: could not create the English translation copy.|
+s|Interner Fehler: ungültiger Standardwert für confirm.|Internal error: invalid default value for confirm.|
+s|Kernel-Modul ntfs3 nicht verfügbar – |Kernel module ntfs3 not available – |
+s|läuft als ntfs-3g (FUSE).|runs as ntfs-3g (FUSE).|
+s|Schreibrate deutlich geringer (ca. 30–100 MB/s statt ~500 MB/s).|Write rate much lower (approx. 30–100 MB/s instead of ~500 MB/s).|
+s|läuft mit ntfs-3g (FUSE) – Schreibrate deutlich geringer (ca. 30–100 MB/s).|runs with ntfs-3g (FUSE) – write rate much lower (approx. 30–100 MB/s).|
+s|Mit ntfs3 (Kernel-Treiber) neu einhängen?|Remount with ntfs3 (kernel driver)?|
+s|eingehängt unter |mounted at |
+s|(ntfs3, Kernel-Treiber)|(ntfs3, kernel driver)|
+s|Aushängen fehlgeschlagen (|Unmount failed (|
+s|belegt) – ntfs-3g wird weiter verwendet.|busy) – ntfs-3g stays in use.|
+s|Einhängen mit ntfs3 fehlgeschlagen.|Mounting with ntfs3 failed.|
+s|läuft weiter mit ntfs-3g (FUSE).|keeps running with ntfs-3g (FUSE).|
+s|ist ausgehängt – manuell einhängen (z. B.|is unmounted – mount manually (e.g.|
+s|Unterordner konnte nicht erstellt werden: |Could not create subdirectory: |
+s|Verzeichnis existiert nicht: $dir – bitte erneut eingeben (0 = zurück).|Directory does not exist: $dir – please enter again (0 = back).|
+s|Verzeichnis ist nicht beschreibbar: $dir – bitte erneut eingeben (0 = zurück).|Directory is not writable: $dir – please enter again (0 = back).|
+s|Datei nicht gefunden: $path – bitte erneut eingeben (0 = zurück).|File not found: $path – please enter again (0 = back).|
+s|Kein Pfad angegeben – bitte erneut eingeben (0 = zurück).|No path given – please enter again (0 = back).|
+s|Keine Auswahlmöglichkeiten für '$title' gefunden.|No options found for '$title'.|
+s|Image-Datei in '$sel' wählen:|Select image file in '$sel':|
+s|Eine Partition (z. B. 3) ODER mehrere (z. B. 3,4,5,6 oder 4-7) angeben.|Enter one partition (e.g. 3) OR several (e.g. 3,4,5,6 or 4-7).|
+s|Leeres Passwort – bitte erneut eingeben.|Empty password – please enter again.|
+s|Jede Zielpartition wird VOLLSTÄNDIG überschrieben!|Every target partition will be COMPLETELY overwritten!|
+s|Keine Partitionen gefunden (Zielwahl).|No partitions found (target selection).|
+s|Ungültige Auswahl: |Invalid selection: |
+s|Ungültige Auswahl.|Invalid selection.|
+s|Ziele für die Quellpartitionen (aufsteigend: |Targets for the source partitions (ascending: |
+s|) angeben.|) – enter them.|
+s|Dateisystem nicht unterstützt|filesystem not supported|
+s|– Festplatten/Partitionen klonen, imagen, recovern|– clone, image and recover disks/partitions|
+s|Verwendung:|Usage:|
+s|interaktives Menü|interactive menu|
+s|diese Hilfe|this help|
+s|Version anzeigen|show version|
+s|Farben deaktivieren (alte Konsolen)|disable colors (old consoles)|
+s|Sprache umschalten (Standard: Deutsch)|switch language (default: German)|
+s|Funktionen:|Features:|
+s|Unterstützte Systeme:|Supported systems:|
+s|- Festplatte/Partition 1:1 klonen (Disk-zu-Disk)|- Clone disk/partition 1:1 (disk-to-disk)|
+s|- Image erstellen (zstd multithreaded, xz/gzip-Fallback)|- Create image (zstd multithreaded, xz/gzip fallback)|
+s|- Image zurückspielen inkl. SHA-256-Prüfung; Einzel- und|- Restore image incl. SHA-256 check; single and|
+s|Partitions-Images (.tar) werden automatisch erkannt|partition images (.tar) are detected automatically|
+s|- Multi-Restore: ALLE Ziele in einer Eingabe wählen|- Multi-restore: select ALL targets in one entry|
+s|(z. B. 1,3 oder 1-4), zugeordnet in der Reihenfolge der|(e.g. 1,3 or 1-4), assigned in the order of the|
+s|    Quellpartitionen"|    source partitions"|
+s|- Partition(en) sichern: eine oder mehrere am gleichen|- Back up partition(s): one or several at the same|
+s|Prompt; mehrere landen in EIN Image (tar), einzelne|prompt; several go into ONE image (tar), single|
+s|Partitionen daraus zurückspielbar|partitions restorable from it|
+s|- Image-Host-Ordner am Beginn wählen (Laufwerksliste oder|- Select image host directory at start (drive list or|
+s|Pfad); Backup fragt den Unterordner-Namen ab und hängt|path); backup asks for the subdirectory name and|
+s|Datum/Zeit an, Images heißen automatisch <Platte>_<Zeit>;|appends date/time, images are named <disk>_<time>;|
+s|Restore listet Unterordner/Images zur Auswahl|restore lists subdirectories/images to choose from|
+s|- Partitionstabelle sichern/zurückspielen (sfdisk); Dumps|- Save/restore partition table (sfdisk); dumps|
+s|landen im Image-Host-Ordner und werden zum Zurückspielen|go into the image host directory and are listed|
+s|dort gelistet (\*.txt, Manifeste ausgenommen)|there for restoring (\*.txt, manifests excluded)|
+s|- Eigene Einhängungen (Image-Host-Ordner) werden beim|- Own mounts (image host directory) are|
+s|Beenden wieder ausgehängt|unmounted at exit|
+s|- OPTIONAL verschlüsselte Images: AES-256 (openssl,|- OPTIONAL encrypted images: AES-256 (openssl,|
+s|PBKDF2) nach der Kompression, Endung .enc; Passwort|PBKDF2) after compression, suffix .enc; the password|
+s|wird vor dem Restore anhand einer Passcheck-Datei|is verified before restore via a passcheck file|
+s|verifiziert, BEVOR das Ziel überschrieben wird|BEFORE the target is overwritten|
+s|- Festplatten erneut einlesen (Hauptmenü): Datenträgerliste|- Re-read disks (main menu): refresh volume list|
+s|mit Einhäng-Status nach dem Start auffrischen|with mount status after start|
+s|- Ziel anpassen nach Klonen auf größere Platte|- Adjust target after cloning to a larger disk|
+s|- Menü-Steuerung: 0 = zurück, 00 = beenden, 000 = abbrechen|- Menu control: 0 = back, 00 = quit, 000 = abort|
+s|(auch in Freitext-Prompts; falsche/leere Pfadangaben|(also in free-text prompts; wrong/empty path entries|
+s|werden erneut gefragt statt abzubrechen)|are asked again instead of aborting)|
+s|Arch, Ubuntu/Debian (automatische Paket-Installation)|Arch, Ubuntu/Debian (automatic package installation)|
+s|Alpine (util-linux/coreutils statt Busybox-Tools)|Alpine (util-linux/coreutils instead of Busybox tools)|
+s|Windows-Platten (NTFS, MSR, EFI, WinRE): 1:1-Kopie,|Windows disks (NTFS, MSR, EFI, WinRE): 1:1 copy,|
+s|Schnellstart-Warnung, ntfsresize zum Vergrößern|fast-startup warning, ntfsresize for growing|
+s|Fehler: |Error: |g
+s|Warnung: Konnte %s nicht aushängen – bitte manuell prüfen.|Warning: could not unmount %s – please check manually.|
+s|Auf Wiedersehen.|Goodbye.|
+s|Vom Benutzer abgebrochen.|Aborted by user.|
+s|Abgebrochen.|Aborted.|g
+s|Bitte als root ausführen (sudo |Please run as root (sudo |
+s|Keine Auswahlmöglichkeiten für |No options found for |
+s|Bitte nur j oder n drücken.|Please enter only y or n.|
+s|\[J/n\]|[Y/n]|g
+s|\[j/N\]|[y/N]|g
+s|Unbekanntes Argument: |Unknown argument: |
+s|Ohne die fehlenden Werkzeuge (|Without the missing tools (|
+s|) kann clonie nicht arbeiten.|) clonie cannot work.|
+s|Optionale Werkzeuge übersprungen: |Optional tools skipped: |
+s|Fehlende Werkzeuge: |Missing tools: |
+s|Paketquelle|package source|g
+s|Zu installieren:     |To install:          |
+s|Pakete jetzt installieren?|Install packages now?|
+s|Installation abgelehnt.|Installation declined.|
+s|pacman-Installation fehlgeschlagen.|pacman installation failed.|
+s|apt-get update fehlgeschlagen.|apt-get update failed.|
+s|apt-Installation fehlgeschlagen.|apt installation failed.|
+s|apk-Installation fehlgeschlagen.|apk installation failed.|
+s|Kein unterstützter Paketmanager (|No supported package manager (|
+s|Bitte manuell installieren: |Please install manually: |
+s|Weder zstd, xz noch gzip gefunden – keine Kompression möglich.|Neither zstd, xz nor gzip found – compression impossible.|
+s|Auswahl (0 = zurück, 00 = beenden, 000 = abbrechen): |Selection (0 = back, 00 = quit, 000 = abort): |
+s|Ziele (0 = zurück, 00 = beenden, 000 = abbrechen): |Targets (0 = back, 00 = quit, 000 = abort): |
+s|Auswahl \[Enter = |Selection [Enter = |
+s|Auswahl: |Selection: |
+s|:-leer}|:-empty}|
+s|Lese Festplatten/Partitionstabellen erneut ein ...|Re-reading disks/partition tables ...|
+s|Aktuelle Datenträger:|Current volumes:|
+s|Keine Datenträger mit Dateisystem gefunden.|No volumes with a filesystem found.|
+s|(eingehängt: |(mounted: |g
+s|(nicht eingehängt)|(not mounted)|g
+s|Image-Host-Ordner wählen/wechseln|Select/change image host directory|
+s|Image-Host-Ordner ist nicht beschreibbar – nur Wiederherstellen möglich.|Image host directory is not writable – restore only.|
+s|Pfad zum Image-Host-Ordner: |Path to image host directory: |
+s|Unterordner im Image-Host-Ordner wählen:|Select subdirectory in image host directory:|
+s|Keine Unterordner im Image-Host-Ordner: |No subdirectories in image host directory: |
+s|Image-Datei im Image-Host-Ordner wählen:|Select image file in image host directory:|
+s|Dump-Datei im Image-Host-Ordner wählen:|Select dump file in image host directory:|
+s|Image-Host-Ordner wählen:|Select image host directory:|
+s|Keine Dump-Dateien (\*.txt) im Image-Host-Ordner: |No dump files (\*.txt) in image host directory: |
+s|jetzt einhängen (als Image-Host-Ordner)?|mount now (as image host directory)?|
+s|Gespeichert wird im Image-Host-Ordner, Unterordner:|Saving into the image host directory, subdirectory:|
+s|Der Dump liegt im Image-Host-Ordner und wird beim|The dump is stored in the image host directory and is|
+s|Zurückspielen dort zur Auswahl gelistet.|listed there for selection when restoring.|
+s|Laufwerk/Ordner, unter dem Images liegen oder entstehen:|Drive/directory where images are stored or created:|
+s|Überspringen (keinen Host-Ordner festlegen)|Skip (do not set a host directory)|
+s|Pfad manuell eingeben|Enter path manually|
+s|Aktuell:     |Current:      |
+s| ist nicht eingehängt.| is not mounted.|
+s|Übersprungen – |Skipped – |
+s|wird nicht verwendet.|will not be used.|
+s|Mountpoint konnte nicht erstellt werden: |Could not create mountpoint: |
+s|Einhängen von |Mounting |
+s|eingehängt unter |mounted at |
+s|Kein Pfad angegeben.|No path given.|
+s|Zielverzeichnis für das Image: |Target directory for the image: |
+s|Kein Verzeichnis angegeben – bitte erneut eingeben (0 = zurück).|No directory given – please enter again (0 = back).|
+s|Verzeichnis existiert nicht: |Directory does not exist: |
+s|Verzeichnis ist nicht beschreibbar: |Directory is not writable: |
+s|Verzeichnis liegt auf der Quellplatte (|Directory is on the source disk (|
+s|Zielverzeichnis liegt auf der Quellplatte (|Target directory is on the source disk (|
+s|) – das Schreiben würde die Quelle zerstören. Bitte ein Verzeichnis auf einer ANDEREN Platte wählen.|) – writing would destroy the source. Please choose a directory on a DIFFERENT disk.|
+s|) – bitte ein Verzeichnis auf einer ANDEREN Platte wählen.|) – please choose a directory on a DIFFERENT disk.|
+s|Datei nicht gefunden: |File not found: |
+s|Verzeichnis nicht gefunden: |Directory not found: |
+s|Image-Basisname (ohne Endung): |Image base name (without suffix): |
+s|Kein Name angegeben – bitte erneut eingeben (0 = zurück).|No name given – please enter again (0 = back).|
+s|Der Name darf keinen Pfad enthalten – bitte erneut eingeben.|The name must not contain a path – please enter again.|
+s|Zieldatei \[|Target file [|
+s|Datei existiert bereits: |File already exists: |
+s| – bitte anderen Namen wählen.| – please choose another name.|
+s|Zielverzeichnis fehlt oder ist nicht beschreibbar: |Target directory missing or not writable: |
+s| – bitte erneut eingeben.| – please enter again.|
+s|Pfad zum Image (.zst/.xz/.gz/.img/.tar; verschlüsselt mit .enc): |Path to image (.zst/.xz/.gz/.img/.tar; encrypted with .enc): |
+s|Bitte erneut wählen.|Please choose again.|
+s|Keine Images im Unterordner gefunden: |No images found in subdirectory: |
+s|Image-Datei in '|Image file in '|
+s|Keine Festplatten gefunden (lsblk leer).|No disks found (lsblk empty).|
+s|Festplatte wählen (|Select disk (|
+s|Keine Partitionen gefunden (|No partitions found (|
+s|Partition wählen (|Select partition (|
+s|Partition(en) wählen (|Select partition(s) (|
+s|\[kein FS\]|[no FS]|
+s|Mehrere werden in EIN Image gesichert und daraus einzeln wiederherstellbar.|Several are saved into ONE image and individually restorable from it.|
+s|Mehrfachauswahl muss auf EINER Platte liegen – |Multi-selection must be on ONE disk – |
+s|liegt nicht auf |is not on |
+s|Bitte mehrere Platten einzeln sichern.|Please back up multiple disks one at a time.|
+s|Größe von |Size of |
+s|konnte nicht ermittelt werden.|could not be determined.|
+s|ist eingehängt (|is mounted (|
+s|) – bitte vorher aushängen.|) – please unmount first.|
+s|"Quelle")|"Source")|
+s|"Ziel")|"Target")|
+s|WARNUNG: Windows-/NTFS-Partition(en) erkannt.|WARNING: Windows/NTFS partition(s) detected.|
+s|Windows 'Schnellstart'/Ruhezustand lässt NTFS in einem|Windows 'Fast Startup'/hibernation leaves NTFS in an|
+s|inkonsistenten Zustand zurück -> Kopie kann beschädigt sein.|inconsistent state -> the copy may be damaged.|
+s|Windows vorher VOLL herunterfahren: 'shutdown /s /t 0'|Shut Windows down FULLY first: 'shutdown /s /t 0'|
+s|(Schnellstart dauerhaft aus: 'powercfg /h off' in Windows)|(disable fast startup permanently: 'powercfg /h off' in Windows)|
+s|BitLocker-Platten werden 1:1 mitkopiert; für den Zugriff auf|BitLocker disks are copied 1:1; accessing the|
+s|die Kopie wird der BitLocker-Wiederherstellungsschlüssel gebraucht.|copy requires the BitLocker recovery key.|
+s|MSR-/Recovery-Partitionen werden von der 1:1-Kopie erfasst.|MSR/recovery partitions are included in the 1:1 copy.|
+s|Kompression wählen:|Select compression:|
+s|zstd  Stufe 1  – schnellste Kompression, ideal für große Platten|zstd  level 1  – fastest compression, ideal for large disks|
+s|zstd  Stufe 3  – bester Kompromiss aus Tempo und Größe (Standard)|zstd  level 3  – best compromise of speed and size (default)|
+s|zstd  Stufe 19 – maximale Verdichtung, deutlich langsamer|zstd  level 19 – maximum compression, much slower|
+s|xz    Stufe 6  – hohe Verdichtung, langsam (multithreaded)|xz    level 6  – high compression, slow (multithreaded)|
+s|gzip  Stufe 6  – klassisch, auf jedem System verfügbar|gzip  level 6  – classic, available on every system|
+s|ohne           – Rohkopie (.img), schnellstes Schreiben, größte Datei|none            – raw copy (.img), fastest write, largest file|
+s|ohne (Rohkopie)|none (raw copy)|
+s| Stufe | level |g
+s|Image verschlüsseln (AES-256, Passwort)?|Encrypt image (AES-256, password)?|
+s|ACHTUNG: Geht das Passwort verloren, sind die Daten UNWIEDERBRINGLICH verloren - es gibt keine Rettungsmöglichkeit mehr.|WARNING: If the password is lost, the data is lost IRRECOVERABLY - there is no recovery path.|
+s|Passwort (nicht anzeigen)|Password (not shown)|
+s|Passwort ist kürzer als 8 Zeichen – trotzdem verwenden?|Password is shorter than 8 characters – use it anyway?|
+s|Passwort wiederholen|Repeat password|
+s|Passwörter stimmen nicht überein – bitte erneut.|Passwords do not match – please try again.|
+s|Passwort für verschlüsseltes Image|Password for encrypted image|
+s|Passwort falsch (Passcheck fehlgeschlagen).|Wrong password (passcheck failed).|
+s|Dreimal ein falsches Passwort – Abbruch.|Wrong password three times – aborting.|
+s|Keine Passcheck-Datei gefunden: |No passcheck file found: |
+s|Kein Passcheck im Image|No passcheck in image|
+s| – das Passwort kann vor dem Schreiben nicht verifiziert werden.| – the password cannot be verified before writing.|
+s|Ohne Passwortprüfung fortfahren?|Continue without password verification?|
+s|Passcheck-Datei (|Passcheck file (|
+s|) konnte nicht erstellt werden.|) could not be created.|
+s|Passcheck-Member konnte nicht erstellt werden.|Passcheck member could not be created.|
+s|Passcheck-Member im Image|passcheck member in image|
+s|Extraktion des Passcheck-Members fehlgeschlagen.|Extraction of passcheck member failed.|
+s|Verschlüsseltes Image erkannt (AES-256).|Encrypted image detected (AES-256).|
+s|Verschlüsseltes Partitions-Image erkannt (AES-256).|Encrypted partition image detected (AES-256).|
+s|, Verschlüsselung=|, encryption=|g
+s|Verschlüsselung: AES-256-CTR (openssl, PBKDF2, |Encryption: AES-256-CTR (openssl, PBKDF2, |
+s| Iterationen)| iterations)|
+s|  Image von FESTPLATTE erstellen|  Create image of DISK|
+s|  Image von PARTITION(EN) erstellen|  Create image of PARTITION(S)|
+s|Image von Festplatte erstellen (komprimiert)|Create disk image (compressed)|
+s|Image von Partition(en) erstellen (komprimiert)|Create partition image(s) (compressed)|
+s|Name für den Sicherungsordner: |Name for the backup directory: |
+s|Wohin soll das Image gespeichert werden?|Where should the image be saved?|
+s|WICHTIG: NICHT auf die Quellplatte (|IMPORTANT: NOT onto the source disk (|
+s|) selbst!|) itself!|
+s|Image-Erstellung wirklich starten?|Really start image creation?|
+s|Image-Erstellung läuft ...|Creating image ...|
+s|Image-Erstellung fehlgeschlagen (dd=|Image creation failed (dd=|
+s|Sicherung von |Backup of |
+s|, Kompressor=|, compressor=|g
+s|SHA-256-Prüfsumme des Images wird berechnet ...|Computing SHA-256 checksum of image ...|
+s|SHA-256-Prüfsumme wird berechnet ...|Computing SHA-256 checksum ...|
+s|Image erfolgreich erstellt:|Image created successfully:|
+s|Image existiert bereits: |Image already exists: |
+s|Zielverzeichnis ist nicht beschreibbar: |Target directory is not writable: |
+s|  Image ZURÜCKSPIELEN (recover)|  RESTORE IMAGE (recover)|
+s|Mehrpartitions-Image erkannt – 'Image zurückspielen (recover)' routet .tar automatisch an den Multi-Restore.|Multi-partition image detected – 'Restore image (recover)' routes .tar to multi-restore automatically.|
+s|Image zurückspielen (recover)|Restore image (recover)|
+s|Partitions-Image erkannt – Wiederherstellung läuft über den Multi-Restore.|Partition image detected – restore runs via multi-restore.|
+s|Image nicht gefunden: |Image not found: |
+s|Prüfsumme wird geprüft ...|Verifying checksum ...|
+s|Prüfsumme von |Verifying checksum of |
+s| wird geprüft ...| ...|
+s|Prüfsumme stimmt nicht – Image beschädigt oder falsches Ziel.|Checksum mismatch – image damaged or wrong target.|
+s| stimmt nicht – Image beschädigt.| mismatch – image damaged.|
+s|Keine Prüfsumme gefunden: |No checksum found: |
+s|Keine Prüfsumme für |No checksum for |
+s| im Image.| in image.|
+s|Ohne Prüfsummenprüfung fortfahren?|Continue without checksum verification?|
+s|Zielart wählen:|Select target type:|
+s|Auf ganze FESTPLATTE zurückspielen|Restore to entire DISK|
+s|Auf einzelne PARTITION zurückspielen|Restore to single PARTITION|
+s|Ziel (|Target (|
+s|ist zu klein: |is too small: |
+s|Wiederherstellung läuft (|Restoring (|
+s|Wiederherstellung läuft ...|Restoring ...|
+s|Wiederherstellung fehlgeschlagen (Entschlüsselung=|Restore failed (decryption=|
+s|Wiederherstellung fehlgeschlagen (Dekompressor=|Restore failed (decompressor=|
+s|, Dekompressor=|, decompressor=|g
+s|Image erfolgreich zurückgespielt auf |Image successfully restored to |
+s| ist nicht installiert, kann | is not installed; cannot decompress |
+s| nicht dekomprimieren.|.|
+s|  FESTPLATTE 1:1 KLONEN|  CLONE DISK 1:1|
+s|  PARTITION 1:1 KLONEN|  CLONE PARTITION 1:1|
+s|Festplatte 1:1 klonen|Clone disk 1:1|
+s|Partition 1:1 klonen|Clone partition 1:1|
+s|Zielplatte wird VOLLSTÄNDIG überschrieben!|Target disk will be COMPLETELY overwritten!|
+s|Zielpartition wird VOLLSTÄNDIG überschrieben!|Target partition will be COMPLETELY overwritten!|
+s|Quelle und Ziel sind identisch (|Source and target are identical (|
+s|Zielplatte zu klein: |Target disk too small: |
+s|Zielpartition zu klein: |Target partition too small: |
+s|ACHTUNG: ALLE Daten auf den genannten Zielen werden UNWIDERRUFLICH überschrieben!|WARNING: ALL data on the listed targets will be IRREVERSIBLY overwritten!|
+s|ACHTUNG: ALLE Daten auf |WARNING: ALL data on |
+s| werden UNWIDERRUFLICH gelöscht!| will be IRREVERSIBLY deleted!|
+s|ACHTUNG: Der komplette Inhalt von |WARNING: The entire content of |
+s| wird UNWIDERRUFLICH überschrieben!| will be IRREVERSIBLY overwritten!|
+s|Klonen wirklich starten?|Really start cloning?|
+s|Kopiervorgang läuft ...|Copying ...|
+s|Klonen fehlgeschlagen (dd Exit |Cloning failed (dd exit |
+s|dd-Meldung oben nennt die Fehlerseite: |The dd message above names the failing side: |
+s|'error reading' = Quelle, 'error writing' = Ziel.|'error reading' = source, 'error writing' = target.|
+s|Ziel ist jetzt UNVOLLSTÄNDIG überschrieben (nicht bootbar) – Klon nach Fehlerbehebung wiederholen.|Target is now PARTIALLY overwritten (not bootable) – retry the clone after fixing the error.|
+s|Diagnose: Kernel-Log (dmesg) auf Gerätefehler prüfen; in einer VM: Speicherplatz des Hosts prüfen.|Diagnosis: check the kernel log (dmesg) for device errors; in a VM: check host storage space.|
+s|Festplatte erfolgreich geklont: |Disk successfully cloned: |
+s|Partition erfolgreich geklont: |Partition successfully cloned: |
+s|Die Zielplatte ist größer als die Quelle.|The target disk is larger than the source.|
+s|Die Zielpartition ist größer als die Quelle.|The target partition is larger than the source.|
+s|  PARTITIONSTABELLE SICHERN (sfdisk-Dump)|  BACK UP PARTITION TABLE (sfdisk dump)|
+s|  PARTITIONSTABELLE ZURÜCKSPIELEN|  RESTORE PARTITION TABLE|
+s|Partitionstabelle sichern (sfdisk-Dump)|Back up partition table (sfdisk dump)|
+s|Partitionstabelle wirklich zurückspielen?|Really restore partition table?|
+s|Partitionstabelle zurückspielen|Restore partition table|
+s|sfdisk-Dump fehlgeschlagen.|sfdisk dump failed.|
+s|sfdisk-Restore fehlgeschlagen.|sfdisk restore failed.|
+s|sfdisk-Dump der Quellplatte fehlgeschlagen (wird übersprungen).|sfdisk dump of source disk failed (skipped).|
+s|Partitionstabelle gesichert:|Partition table saved:|
+s|Diese Datei vor dem Zurückspielen SICHERN (z. B. auf USB-Stick)!|SAVE this file before restoring (e.g. onto a USB stick)!|
+s|Pfad zur Dump-Datei (sfdisk-Format): |Path to dump file (sfdisk format): |
+s|ist kein sfdisk-Dump (keine 'label:'-Zeile) – bitte andere Datei wählen.|is not an sfdisk dump (no 'label:' line) – please choose another file.|
+s|ACHTUNG: Die aktuelle Partitionstabelle auf |WARNING: The current partition table on|
+s| wird überschrieben.| will be overwritten.|
+s|Daten in den Partitionen bleiben erhalten, aber die Zuordnung ändert|Data in the partitions is kept, but the mapping|
+s|sich – bei falscher Dump-Datei droht DATENVERLUST!|changes – a wrong dump file risks DATA LOSS!|
+s|Partitionstabelle zurückgespielt auf |Partition table restored to |
+s|Partitionsnummer konnte nicht ermittelt werden (|Could not determine partition number (|
+s|Vergrößere NTFS-Dateisystem mit ntfsresize ...|Growing NTFS filesystem with ntfsresize ...|
+s|Vergrößere ext-Dateisystem mit resize2fs ...|Growing ext filesystem with resize2fs ...|
+s|Prüfe ext-Dateisystem mit e2fsck ...|Checking ext filesystem with e2fsck ...|
+s|e2fsck fehlgeschlagen – bitte manuell prüfen.|e2fsck failed – please check manually.|
+s|Vergrößere |Growing |g
+s|bis zum Plattenende von |to the end of |
+s|FAT/exFAT wird nicht automatisch vergrößert (manuell: fatresize).|FAT/exFAT is not grown automatically (manually: fatresize).|
+s|Kein vergrößerbares Dateisystem erkannt (|No growable filesystem detected (|
+s| – keine automatische Vergrößerung möglich.| – automatic growing not possible.|
+s|ntfsresize fehlgeschlagen – bitte manuell prüfen.|ntfsresize failed – please check manually.|
+s|resize2fs fehlgeschlagen – bitte manuell prüfen.|resize2fs failed – please check manually.|
+s|parted resizepart fehlgeschlagen (ist |parted resizepart failed (is |
+s| die letzte Partition?).| the last partition?).|
+s|Partition vergrößert: |Partition grown: |
+s| ist jetzt | is now |
+s|Hinweis: Windows beim nächsten Start ggf. chkntfs/chkdsk ausführen lassen.|Note: let Windows run chkntfs/chkdsk at next boot if needed.|
+s|Partition auf |Adjust partition on |
+s| anpassen (z. B. Windows-Partition auf größere Platte vergrößern)?| (e.g. grow a Windows partition onto a larger disk)?|
+s|Anzupassende Partition (auf |Partition to adjust (on |
+s|Dateisystem auf |Filesystem on |
+s| an die neue Größe anpassen (NTFS/ext)?| to the new size (NTFS/ext)?|
+s|Dateisystem '|filesystem '|
+s|  MEHRERE PARTITIONEN SICHERN (ein Image)|  BACK UP MULTIPLE PARTITIONS (one image)|
+s|Gesichert werden:|Will be backed up:|
+s|Sicherung wirklich starten?|Really start backup?|
+s|Temporäres Verzeichnis konnte nicht erstellt werden.|Could not create temporary directory.|
+s|tar-Image konnte nicht erstellt werden.|Could not create tar image.|
+s|"Sichere |"Backing up |
+s|SHA-256 von |SHA-256 of |
+s| konnte nicht berechnet werden.| could not be computed.|
+s|Anfügen von |Appending |
+s| an das Image fehlgeschlagen.| to the image failed.|
+s|Partitions-Image erfolgreich erstellt:|Partition image created successfully:|
+s|   Enthalten: |   Contains: |
+s|   Einzeln zurückspielbar über 'Partitions-Image (Multi) zurückspielen'.|   Individually restorable via 'Restore partition image (Multi)'.|
+s|Quellplatte:  |Source disk:  |
+s|  PARTITIONS-IMAGE ZURÜCKSPIELEN (Multi)|  RESTORE PARTITION IMAGE (Multi)|
+s|Image enthält kein MANIFEST.txt – kein clonie-Mehrpartitions-Image?|Image contains no MANIFEST.txt – not a clonie multi-partition image?|
+s|Manifest listet keine Partitionen auf: |Manifest lists no partitions: |
+s|Partitions-Image enthält:|Partition image contains:|
+s|(ursprünglich |(originally |
+s|Wiederherzustellende Partitionen (z. B. 2 oder 1,3; 0 = zurück): |Partitions to restore (e.g. 2 or 1,3; 0 = back): |
+s|Imageliste konnte nicht gelesen werden: |Could not read image listing: |
+s|Keine Imagedatei für |No image file for |
+s| im Image gefunden.| found in image.|
+s|Ziele wählen:|Select targets:|
+s|Ziele für die Quellpartitionen (aufsteigend: |Targets for the source partitions (ascending: |
+s|) angeben.|) – enter them.|
+s|Eine Zahl oder mehrere (z. B. 1,3 oder 1-4); Anzahl: |One number or several (e.g. 1,3 or 1-4); count: |
+s|Genau |Exactly |
+s| Ziele angeben (nicht | targets required (got |
+s|"Extrahiere |"Extracting |
+s|Extraktion von |Extraction of |
+s|Image-Ordner nicht beschreibbar – Extraktion nach |Image directory not writable – extracting to |
+s| (Platz beachten)| (mind free space)|
+s| fehlgeschlagen.| failed.|
+s|Zurückgespielt werden:|Will be restored:|
+s|Wirklich 1 Partition zurückspielen?|Really restore 1 partition?|
+s|Partitionen zurückspielen?|partitions?|
+s|Alle gewählten Partitionen wurden zurückgespielt.|All selected partitions were restored.|
+s|Image-Datei:  |Image file:  |
+s|clonie $VERSION – Festplatte/Partition/Image|clonie $VERSION – disk/partition/image|
+s|Aktion wählen:|Select action:|
+s|Eingabetaste fürs Hauptmenü ...|Press Enter for the main menu ...|
+s|kein Paketmanager|no package manager|
+s|Image-Ordner:  |Image dir:      |
+s|(nicht festgelegt)|(not set)|
+s|Festplatten erneut einlesen|Re-read disks|
+s|z\. B\.|e.g.|g
+s|Image-Host-Ordner|image host directory|g
+s|Quellpartitionen|source partitions|g
+s|Quellplatte|source disk|g
+s|Zielverzeichnis|target directory|g
+s|Zielplatte|target disk|g
+s|Zielpartition|target partition|g
+s|Zielgröße:  |Target size:  |
+s|Quellgröße |source size |g
+s|"Quelle: |"Source: |g
+s|Ziel:  |Target:  |g
+s|Größe:  |Size:  |g
+s|Kompression:  |Compression:  |g
+s|Kompression|compression|g
+s|Verschlüsselung:|Encryption:|g
+s|SHA-256-Prüfsumme|SHA-256 checksum|g
+s|Prüfsummenprüfung|checksum verification|g
+s|Prüfsumme: |Checksum: |g
+s|Prüfsumme|Checksum|g
+s|Passwörter|passwords|g
+s|Passwortprüfung|password verification|g
+s|Passwort|password|g
+s|Image-Datei|image file|g
+s|Wiederherstellungspfad|recovery path|
+s|Mehrpartitions-Image|multi-partition image|g
+s|Partitions-Image|partition image|g
+s|Sicherungsordner|backup directory|g
+s|Unterordner|subdirectory|g
+s|Zurückgespielt|Restored|g
+s|zurückgespielt|restored|g
+s|zurückspielbar|restorable|g
+s|Zurückspielen|Restoring|g
+s|zurückspielen|restore|g
+s|Zurück|Back|g
+s|zurück|back|g
+s|Beenden|Quit|g
+s|beenden|quit|g
+s|Abbrechen|Abort|g
+s|abbrechen|abort|g
+s|abzubrechen|aborting|g
+s|Wirklich |Really |g
+s|wirklich |really |g
+s|erfolgreich |successfully |g
+s|fehlgeschlagen|failed|g
+s|konnte nicht |could not be |g
+s|Hauptmenü|main menu|g
+s|Festplatten|disks|g
+s|Festplatte|disk|g
+s|Partitionstabelle|partition table|g
+s|PARTITION(EN)|PARTITION(S)|
+s|Partitionen:   |Partitions:   |
+s|Partitionen|partitions|g
+s|Partition |partition |g
+s|Datenträger|volumes|g
+s|ACHTUNG:|WARNING:|g
+s|WARNUNG:|WARNING:|g
+s|unbekannt|unknown|g
+LANG_SED
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" && -z "${TRANSLATED_COPY:-}" ]]; then
+    for _lang_a in "$@"; do
+        case "$_lang_a" in
+            -de) SPRACHE="DE" ;;
+            -en) SPRACHE="EN" ;;
+        esac
+    done
+    unset _lang_a
+    if [[ "$SPRACHE" == "EN" ]]; then
+        _lang_copy=""
+        _lang_prog=""
+        _lang_copy="$(mktemp "${TMPDIR:-/tmp}/clonie-en-XXXXXXXX")" || {
+            printf 'Fehler: temporäre Datei konnte nicht erstellt werden.\n' >&2
+            exit 3
+        }
+        _lang_prog="$(mktemp "${TMPDIR:-/tmp}/clonie-lang-XXXXXXXX")" || {
+            printf 'Fehler: temporäre Datei konnte nicht erstellt werden.\n' >&2
+            rm -f -- "$_lang_copy"
+            exit 3
+        }
+        _lang_catalog > "$_lang_prog"
+        if ! {
+            printf 'CLONIE_ORIG_ARG0=%q\nTRANSLATED_COPY=1\n' "$0"
+            sed -f "$_lang_prog" "${BASH_SOURCE[0]}"
+        } > "$_lang_copy"; then
+            printf 'Fehler: englische Übersetzungskopie konnte nicht erstellt werden.\n' >&2
+            rm -f -- "$_lang_copy" "$_lang_prog"
+            exit 3
+        fi
+        rm -f -- "$_lang_prog"
+        exec bash "$_lang_copy" "$@"
+    fi
+fi
+
+DISTRO="unknown"
+PACKAGE_MANAGER=""
+
+SELECTED_DISK=""
+SELECTED_PART=""
+SELECTED_ITEM_INDEX=""
+
+MENU_TOP=""
+MENU_ACTION=""
+
+PART_MULTI=0
+PART_MULTI_DISK=""
+PART_MULTI_PATHS=()
+
+COMPRESSION=""
+IMAGE_SUFFIX=""
+COMPRESSOR=()
+DECOMPRESSOR=()
+
+ENCRYPT_IMAGE=0
+ENC_PASSPHRASE=""
+ENC_ITER=200000
+ENC_CIPHER_ARGS=(-aes-256-ctr -pbkdf2 -iter "$ENC_ITER" -salt)
+ENC_DECIPHER_ARGS=(-aes-256-ctr -pbkdf2 -iter "$ENC_ITER")
+DECRYPTOR=()
+ENC_PASSCHECK_TOKEN="clonie-passcheck-ok"
+
+DD_FULLBLOCK=()
+DD_STATUS=()
+
+IMAGE_HOST_DIR=""
+HOST_MOUNT=""
+BACKUP_DIR=""
+HOST_DIR_STATE=""
+IMG_FILES=()
+IMG_NAMES=()
+SELECTED_IMAGE_FILE=""
+TABLE_FILES=()
+TABLE_NAMES=()
+ASK_DIR_RESULT=""
+ASK_FILE_RESULT=""
+ASK_BASE_RESULT=""
+
+TMP_CLEANUP=""
+MOUNTED_BY_CLONIE=()
+MOUNTED_CREATED=()
+
+cleanup_on_exit() {
+    local i
+    if [[ "${#MOUNTED_BY_CLONIE[@]}" -gt 0 ]]; then
+        for i in "${!MOUNTED_BY_CLONIE[@]}"; do
+            if umount "${MOUNTED_BY_CLONIE[$i]}" 2>/dev/null; then
+                if [[ "${MOUNTED_CREATED[$i]:-0}" == "1" ]]; then
+                    rmdir "${MOUNTED_BY_CLONIE[$i]}" 2>/dev/null || true
+                fi
+            else
+                printf 'Warnung: Konnte %s nicht aushängen – bitte manuell prüfen.\n' \
+                    "${MOUNTED_BY_CLONIE[$i]}" >&2
+            fi
+        done
+    fi
+    if [[ -n "${TMP_CLEANUP:-}" && "${TMP_CLEANUP}" == *clonie-m* ]]; then
+        rm -rf -- "${TMP_CLEANUP}"
+    fi
+    if [[ -n "${HOST_DIR_STATE:-}" ]]; then
+        rm -f -- "$HOST_DIR_STATE"
+    fi
+    if [[ -n "${TRANSLATED_COPY:-}" ]]; then
+        rm -f -- "$0"
+    fi
+}
+trap cleanup_on_exit EXIT
+
+
+COLOR_RESET=''
+COLOR_HEADING=''
+COLOR_TEXT=''
+COLOR_WARN=''
+COLOR_FILE=''
+COLOR_OTHER=''
+
+init_colors() {
+    if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+        COLOR_RESET='\033[0m'
+        COLOR_HEADING='\033[1;92m'
+        COLOR_TEXT='\033[1;96m'
+        COLOR_WARN='\033[1;91m'
+        COLOR_FILE='\033[1;35m'
+        COLOR_OTHER='\033[1;92m'
+    fi
+}
+
+print_heading() {
+    printf '%b\n' "${COLOR_HEADING}$*${COLOR_RESET}"
+}
+
+print_text() {
+    printf '%b\n' "${COLOR_TEXT}$*${COLOR_RESET}"
+}
+
+print_warn() {
+    printf '%b\n' "${COLOR_WARN}$*${COLOR_RESET}" >&2
+}
+
+print_file() {
+    printf '%b\n' "${COLOR_FILE}$*${COLOR_RESET}"
+}
+
+print_other() {
+    printf '%b\n' "${COLOR_OTHER}$*${COLOR_RESET}"
+}
+
+print_prompt() {
+    printf '%b' "${COLOR_TEXT}$*${COLOR_RESET}"
+}
+
+print_path() {
+    local path="$1"
+
+    case "$path" in
+        *.txt|*.sha256|*.passcheck)
+            print_warn "$path"
+            ;;
+        *)
+            print_file "$path"
+            ;;
+    esac
+}
+
+print_kv() {
+    printf '%b%s%b%s\n' "${COLOR_TEXT}" "$1" "${COLOR_RESET}" "${2:-}"
+}
+
+print_kv_path() {
+    printf '%b' "${COLOR_TEXT}$1${COLOR_RESET}"
+    print_path "$2"
+}
+
+die() {
+    print_warn "Fehler: $*"
+    exit 3
+}
+
+menu_quit() {
+    print_other "Auf Wiedersehen."
+    exit 42
+}
+
+user_abort() {
+    print_warn "Vom Benutzer abgebrochen."
+    exit 4
+}
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+require_root() {
+    if [[ "$(id -u)" -ne 0 ]]; then
+        die "Bitte als root ausführen (sudo $PROGRAM_NAME)."
+    fi
+}
+
+usage() {
+    print_heading "clonie $VERSION – Festplatten/Partitionen klonen, imagen, recovern"
+    echo
+    print_text "Verwendung:"
+    print_kv "  sudo $PROGRAM_NAME             " "interaktives Menü"
+    print_kv "  $PROGRAM_NAME -h|--help        " "diese Hilfe"
+    print_kv "  $PROGRAM_NAME -v|-V|--version  " "Version anzeigen"
+    print_kv "  $PROGRAM_NAME -nc|--no-color   " "Farben deaktivieren (alte Konsolen)"
+    print_kv "  $PROGRAM_NAME -de|-en          " "Sprache umschalten (Standard: Deutsch)"
+    echo
+    print_text "Funktionen:"
+    print_other "  - Festplatte/Partition 1:1 klonen (Disk-zu-Disk)"
+    print_other "  - Image erstellen (zstd multithreaded, xz/gzip-Fallback)"
+    print_other "  - Image zurückspielen inkl. SHA-256-Prüfung; Einzel- und"
+    print_other "    Partitions-Images (.tar) werden automatisch erkannt"
+    print_other "  - Multi-Restore: ALLE Ziele in einer Eingabe wählen"
+    print_other "    (z. B. 1,3 oder 1-4), zugeordnet in der Reihenfolge der"
+    print_other "    Quellpartitionen"
+    print_other "  - Partition(en) sichern: eine oder mehrere am gleichen"
+    print_other "    Prompt; mehrere landen in EIN Image (tar), einzelne"
+    print_other "    Partitionen daraus zurückspielbar"
+    print_other "  - Image-Host-Ordner am Beginn wählen (Laufwerksliste oder"
+    print_other "    Pfad); Backup fragt den Unterordner-Namen ab und hängt"
+    print_other "    Datum/Zeit an, Images heißen automatisch <Platte>_<Zeit>;"
+    print_other "    Restore listet Unterordner/Images zur Auswahl"
+    print_other "  - Partitionstabelle sichern/zurückspielen (sfdisk); Dumps"
+    print_other "    landen im Image-Host-Ordner und werden zum Zurückspielen"
+    print_other "    dort gelistet (*.txt, Manifeste ausgenommen)"
+    print_other "  - Eigene Einhängungen (Image-Host-Ordner) werden beim"
+    print_other "    Beenden wieder ausgehängt"
+    print_other "  - OPTIONAL verschlüsselte Images: AES-256 (openssl,"
+    print_other "    PBKDF2) nach der Kompression, Endung .enc; Passwort"
+    print_other "    wird vor dem Restore anhand einer Passcheck-Datei"
+    print_other "    verifiziert, BEVOR das Ziel überschrieben wird"
+    print_other "  - Festplatten erneut einlesen (Hauptmenü): Datenträgerliste"
+    print_other "    mit Einhäng-Status nach dem Start auffrischen"
+    print_other "  - Ziel anpassen nach Klonen auf größere Platte"
+    print_other "    (parted resizepart + ntfsresize/resize2fs)"
+    print_other "  - Menü-Steuerung: 0 = zurück, 00 = beenden, 000 = abbrechen"
+    print_other "    (auch in Freitext-Prompts; falsche/leere Pfadangaben"
+    print_other "    werden erneut gefragt statt abzubrechen)"
+    echo
+    print_text "Unterstützte Systeme:"
+    print_other "  Arch, Ubuntu/Debian (automatische Paket-Installation)"
+    print_other "  Alpine (util-linux/coreutils statt Busybox-Tools)"
+    print_other "  Windows-Platten (NTFS, MSR, EFI, WinRE): 1:1-Kopie,"
+    print_other "  Schnellstart-Warnung, ntfsresize zum Vergrößern"
+}
+
+
+detect_system() {
+    if [[ -r /etc/os-release ]]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        DISTRO="${ID:-unknown}"
+    fi
+
+    case "$DISTRO" in
+        arch)
+            PACKAGE_MANAGER="pacman"
+            ;;
+        ubuntu|debian|linuxmint|pop)
+            PACKAGE_MANAGER="apt"
+            ;;
+        alpine)
+            PACKAGE_MANAGER="apk"
+            ;;
+        *)
+            PACKAGE_MANAGER=""
+            ;;
+    esac
+}
+
+package_for_command() {
+    local command_name="$1"
+
+    case "${PACKAGE_MANAGER}:${command_name}" in
+        pacman:lsblk|pacman:blockdev|pacman:sfdisk|pacman:mountpoint) echo "util-linux" ;;
+        pacman:dd|pacman:sha256sum|pacman:sync) echo "coreutils" ;;
+        pacman:partprobe|pacman:parted) echo "parted" ;;
+        pacman:zstd) echo "zstd" ;;
+        pacman:xz) echo "xz" ;;
+        pacman:gzip) echo "gzip" ;;
+        pacman:openssl) echo "openssl" ;;
+        pacman:ntfsresize|pacman:ntfsfix|pacman:ntfsinfo) echo "ntfsprogs" ;;
+
+        apt:lsblk|apt:blockdev|apt:mountpoint) echo "util-linux" ;;
+        apt:dd|apt:sha256sum|apt:sync) echo "coreutils" ;;
+        apt:sfdisk) echo "fdisk" ;;
+        apt:partprobe|apt:parted) echo "parted" ;;
+        apt:zstd) echo "zstd" ;;
+        apt:xz) echo "xz-utils" ;;
+        apt:gzip) echo "gzip" ;;
+        apt:openssl) echo "openssl" ;;
+        apt:ntfsresize|apt:ntfsfix|apt:ntfsinfo) echo "ntfs-3g" ;;
+
+        apk:lsblk|apk:blockdev|apk:mountpoint) echo "util-linux" ;;
+        apk:dd|apk:sha256sum|apk:sync) echo "coreutils" ;;
+        apk:sfdisk) echo "util-linux-misc" ;;
+        apk:partprobe|apk:parted) echo "parted" ;;
+        apk:zstd) echo "zstd" ;;
+        apk:xz) echo "xz" ;;
+        apk:gzip) echo "gzip" ;;
+        apk:openssl) echo "openssl" ;;
+        apk:ntfsresize|apk:ntfsfix|apk:ntfsinfo) echo "ntfs-3g-progs" ;;
+
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+collect_missing() {
+    local mode="$1"
+    shift
+    local missing=()
+    local cmd
+
+    for cmd in "$@"; do
+        if ! command_exists "$cmd"; then
+            missing+=("$cmd")
+        fi
+    done
+
+    if [[ "${#missing[@]}" -gt 0 ]]; then
+        if [[ "$mode" == "required" ]]; then
+            install_packages "${missing[@]}" ||
+                die "Ohne die fehlenden Werkzeuge (${missing[*]}) kann clonie nicht arbeiten."
+        else
+            install_packages "${missing[@]}" ||
+                print_warn "Optionale Werkzeuge übersprungen: ${missing[*]}"
+        fi
+    fi
+}
+
+install_packages() {
+    local commands_missing=("$@")
+    local packages=()
+    local cmd pkg
+
+    for cmd in "${commands_missing[@]}"; do
+        pkg="$(package_for_command "$cmd")"
+        [[ -n "$pkg" ]] || continue
+        if [[ ! " ${packages[*]-} " == *" $pkg "* ]]; then
+            packages+=("$pkg")
+        fi
+    done
+
+    if [[ "${#packages[@]}" -eq 0 ]]; then
+        die "Fehlende Werkzeuge: ${commands_missing[*]} (Paketquelle unbekannt, Distribution: $DISTRO)"
+    fi
+
+    echo
+    print_warn "Fehlende Werkzeuge: ${commands_missing[*]}"
+    print_kv "Distribution:        " "$DISTRO"
+    print_kv "Zu installieren:     " "${packages[*]}"
+    echo
+
+    if ! confirm "Pakete jetzt installieren?" "J"; then
+        print_warn "Installation abgelehnt."
+        return 1
+    fi
+
+    case "$PACKAGE_MANAGER" in
+        pacman)
+            pacman -Sy --needed --noconfirm "${packages[@]}" ||
+                { print_warn "pacman-Installation fehlgeschlagen."; return 1; }
+            ;;
+        apt)
+            apt-get update ||
+                { print_warn "apt-get update fehlgeschlagen."; return 1; }
+            DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}" ||
+                { print_warn "apt-Installation fehlgeschlagen."; return 1; }
+            ;;
+        apk)
+            apk add "${packages[@]}" ||
+                { print_warn "apk-Installation fehlgeschlagen."; return 1; }
+            ;;
+        *)
+            print_warn "Kein unterstützter Paketmanager (Distribution: $DISTRO). Bitte manuell installieren: ${commands_missing[*]}"
+            return 1
+            ;;
+    esac
+
+    return 0
+}
+
+check_tools() {
+    collect_missing required lsblk blkid blockdev dd sha256sum sfdisk partprobe parted mountpoint sync awk grep sed
+    collect_missing optional zstd ntfsresize ntfsfix ntfsinfo
+    if ! command_exists zstd && ! command_exists xz && ! command_exists gzip; then
+        die "Weder zstd, xz noch gzip gefunden – keine Kompression möglich."
+    fi
+}
+
+
+dd_supports_fullblock() {
+    dd if=/dev/zero of=/dev/null bs=512 count=0 iflag=fullblock 2>/dev/null
+}
+
+dd_supports_progress() {
+    dd if=/dev/zero of=/dev/null bs=512 count=1 status=progress 2>/dev/null
+}
+
+set_dd_flags() {
+    if dd_supports_fullblock; then
+        DD_FULLBLOCK=(iflag=fullblock)
+    else
+        DD_FULLBLOCK=()
+    fi
+
+    if dd_supports_progress; then
+        DD_STATUS=(status=progress)
+    else
+        DD_STATUS=()
+    fi
+}
+
+
+confirm() {
+    local prompt="$1"
+    local default="${2:-N}"
+    local answer=""
+    local display=""
+
+    case "$default" in
+        J|j)
+            default="J"
+            display="[J/n]"
+            ;;
+        N|n)
+            default="N"
+            display="[j/N]"
+            ;;
+        *)
+            die "Interner Fehler: ungültiger Standardwert für confirm."
+            ;;
+    esac
+
+    while true; do
+        print_prompt "$prompt $display "
+        if ! read -r answer; then
+            answer="$default"
+        fi
+
+        if [[ -z "$answer" ]]; then
+            answer="$default"
+        fi
+
+        case "$answer" in
+            j|J|y|Y) return 0 ;;
+            n|N) return 1 ;;
+            *) print_text "Bitte nur j oder n drücken." ;;
+        esac
+    done
+}
+
+menu_choose() {
+    local title="$1"
+    shift
+    local options=("$@")
+
+    if [[ "${#options[@]}" -eq 0 ]]; then
+        die "Keine Auswahlmöglichkeiten für '$title' gefunden."
+    fi
+
+    local default="${MENU_DEFAULT_CHOICE:-}"
+    MENU_DEFAULT_CHOICE=""
+
+    echo
+    print_heading "$title"
+    local i
+    for i in "${!options[@]}"; do
+        printf '%b\n' "${COLOR_OTHER}$((i + 1)))${COLOR_RESET} ${COLOR_TEXT}${options[$i]}${COLOR_RESET}"
+    done
+    printf '%b\n' "${COLOR_OTHER}0)${COLOR_RESET} ${COLOR_TEXT}Zurück${COLOR_RESET}   ${COLOR_OTHER}00)${COLOR_RESET} ${COLOR_TEXT}Beenden${COLOR_RESET}   ${COLOR_OTHER}000)${COLOR_RESET} ${COLOR_TEXT}Abbrechen${COLOR_RESET}"
+    echo
+
+    local choice
+    while true; do
+        if [[ -n "$default" ]]; then
+            print_prompt "Auswahl [Enter = $default]: "
+        else
+            print_prompt "Auswahl: "
+        fi
+        if ! read -r choice; then
+            if [[ -n "$default" ]]; then
+                choice="$default"
+                break
+            fi
+            exit 1
+        fi
+        if [[ "$choice" == "0" ]]; then
+            if [[ "$MENU_TOP" == "1" ]]; then
+                MENU_ACTION="back"
+                return 0
+            fi
+            exit 0
+        fi
+        if [[ "$choice" == "00" ]]; then
+            if [[ "$MENU_TOP" == "1" ]]; then
+                print_other "Auf Wiedersehen."
+                exit 0
+            fi
+            menu_quit
+        fi
+        if [[ "$choice" == "000" ]]; then
+            user_abort
+        fi
+        if [[ "$choice" =~ ^[0-9]+$ ]] &&
+            ((choice >= 0 && choice <= ${#options[@]})); then
+            break
+        fi
+        if [[ -z "$choice" && -n "$default" ]]; then
+            choice="$default"
+            break
+        fi
+        print_text "Ungültige Auswahl."
+    done
+
+    SELECTED_ITEM_INDEX=$((choice - 1))
+}
+
+
+list_fs_volumes() {
+    local -a selection=(-e 7)
+    if [[ "${1:-}" == "alle" ]]; then
+        selection=()
+    fi
+    lsblk "${selection[@]}" -o PATH,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINT -P 2>/dev/null |
+        awk -F'"' '
+            $0 ~ /TYPE="disk"/ || $0 ~ /TYPE="part"/ {
+                printf "%s|%s|%s|%s|%s\n", $2, $4, $8, $10, $12
+            }'
+}
+
+rescan_disks() {
+    local -a disks=()
+    local -a rows=()
+    local row dev size fstype label mnt display
+
+    print_other "Lese Festplatten/Partitionstabellen erneut ein ..."
+    while IFS= read -r row; do
+        disks+=("$row")
+    done < <(lsblk -drno PATH,TYPE 2>/dev/null | awk '$2 == "disk" { print $1 }')
+    for dev in "${disks[@]}"; do
+        partprobe "$dev" 2>/dev/null || true
+    done
+    if command_exists udevadm; then
+        udevadm settle 2>/dev/null || true
+    fi
+
+    while IFS= read -r row; do
+        rows+=("$row")
+    done < <(list_fs_volumes alle)
+
+    echo
+    print_heading "Aktuelle Datenträger:"
+    if [[ "${#rows[@]}" -eq 0 ]]; then
+        print_warn "Keine Datenträger mit Dateisystem gefunden."
+        return 0
+    fi
+    for row in "${rows[@]}"; do
+        IFS='|' read -r dev size fstype label mnt <<<"$row"
+        display="${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}  [${fstype:-?}]"
+        if [[ -n "$label" ]]; then
+            display="$display '$label'"
+        fi
+        if [[ -n "$mnt" ]]; then
+            display="$display  (eingehängt: $mnt)"
+        else
+            display="$display  (nicht eingehängt)"
+        fi
+        printf '%b\n' "${COLOR_OTHER}-${COLOR_RESET} $display"
+    done
+    return 0
+}
+
+mount_driver_of_dir() {
+    local dir="$1" srcdev
+
+    srcdev="$(df -P "$dir" 2>/dev/null | awk 'NR == 2 { print $1 }')"
+    [[ -n "$srcdev" ]] || return 0
+    awk -v dev="$srcdev" '$1 == dev { print $3; exit }' /proc/mounts
+}
+
+mount_host_device() {
+    local dev="$1" mnt="$2"
+    local fstype driver
+
+    fstype="$(fs_of_part "$dev")"
+    if [[ "$fstype" == "ntfs" ]] && mount -t ntfs3 "$dev" "$mnt" 2>/dev/null; then
+        print_other "$dev eingehängt unter $mnt (ntfs3, Kernel-Treiber)"
+        return 0
+    fi
+    if ! mount "$dev" "$mnt" 2>/dev/null; then
+        return 1
+    fi
+    driver="$(mount_driver_of_dir "$mnt")"
+    if [[ "$fstype" == "ntfs" && "$driver" == "fuseblk" ]]; then
+        print_warn "Kernel-Modul ntfs3 nicht verfügbar – $dev läuft als ntfs-3g (FUSE)."
+        print_warn "Schreibrate deutlich geringer (ca. 30–100 MB/s statt ~500 MB/s)."
+    else
+        print_other "$dev eingehängt unter $mnt"
+    fi
+    return 0
+}
+
+host_dir_upgrade_driver() {
+    local dev="$1" mnt="$2"
+    local driver newmnt created
+
+    HOST_MOUNT="$mnt"
+    driver="$(mount_driver_of_dir "$mnt")"
+    [[ "$driver" == "fuseblk" ]] || return 0
+    echo
+    print_warn "$mnt läuft mit ntfs-3g (FUSE) – Schreibrate deutlich geringer (ca. 30–100 MB/s)."
+    if ! confirm "Mit ntfs3 (Kernel-Treiber) neu einhängen?" "J"; then
+        return 0
+    fi
+    newmnt="/mnt/clonie-$(basename "$dev")"
+    created=0
+    if [[ ! -e "$newmnt" ]]; then
+        created=1
+    fi
+    if ! mkdir -p "$newmnt"; then
+        print_warn "Mountpoint konnte nicht erstellt werden: $newmnt"
+        return 0
+    fi
+    if ! umount "$mnt" 2>/dev/null; then
+        print_warn "Aushängen fehlgeschlagen ($mnt belegt) – ntfs-3g wird weiter verwendet."
+        if [[ "$created" == "1" ]]; then
+            rmdir "$newmnt" 2>/dev/null || true
+        fi
+        return 0
+    fi
+    if mount -t ntfs3 "$dev" "$newmnt" 2>/dev/null; then
+        print_other "$dev eingehängt unter $newmnt (ntfs3, Kernel-Treiber)"
+        HOST_MOUNT="$newmnt"
+        MOUNTED_BY_CLONIE+=("$newmnt")
+        MOUNTED_CREATED+=("$created")
+        return 0
+    fi
+    print_warn "Einhängen mit ntfs3 fehlgeschlagen."
+    if mount "$dev" "$newmnt" 2>/dev/null; then
+        print_warn "$dev läuft weiter mit ntfs-3g (FUSE)."
+        HOST_MOUNT="$newmnt"
+        MOUNTED_BY_CLONIE+=("$newmnt")
+        MOUNTED_CREATED+=("$created")
+        return 0
+    fi
+    print_warn "$dev ist ausgehängt – manuell einhängen (z. B. sudo mount -t ntfs3 $dev $newmnt)."
+    if [[ "$created" == "1" ]]; then
+        rmdir "$newmnt" 2>/dev/null || true
+    fi
+}
+
+host_dir_for_device() {
+    local dev="$1"
+    local mnt
+
+    mnt="$(lsblk -rno MOUNTPOINT "$dev" 2>/dev/null | awk 'NF { print; exit }')" || mnt=""
+    if [[ -n "$mnt" ]]; then
+        host_dir_upgrade_driver "$dev" "$mnt"
+        return 0
+    fi
+
+    print_text "$dev ist nicht eingehängt."
+    if ! confirm "$dev jetzt einhängen (als Image-Host-Ordner)?" "J"; then
+        print_text "Übersprungen – $dev wird nicht verwendet."
+        return 1
+    fi
+    mnt="/mnt/clonie-$(basename "$dev")"
+    local created=0
+    if [[ ! -e "$mnt" ]]; then
+        created=1
+    fi
+    if ! mkdir -p "$mnt"; then
+        print_warn "Mountpoint konnte nicht erstellt werden: $mnt"
+        return 1
+    fi
+    if ! mount_host_device "$dev" "$mnt"; then
+        if [[ "$created" == "1" ]]; then
+            rmdir "$mnt" 2>/dev/null || true
+        fi
+        print_warn "Einhängen von $dev fehlgeschlagen (Dateisystem nicht unterstützt?)."
+        return 1
+    fi
+    HOST_MOUNT="$mnt"
+    MOUNTED_BY_CLONIE+=("$mnt")
+    MOUNTED_CREATED+=("$created")
+    return 0
+}
+
+host_dir_persist() {
+    local i
+    [[ -n "${HOST_DIR_STATE:-}" ]] || return 0
+    printf '%s\n' "$IMAGE_HOST_DIR" > "$HOST_DIR_STATE"
+    for i in "${!MOUNTED_BY_CLONIE[@]}"; do
+        printf 'M\t%s\t%s\n' \
+            "${MOUNTED_BY_CLONIE[$i]}" "${MOUNTED_CREATED[$i]:-0}" >> "$HOST_DIR_STATE"
+    done
+}
+
+host_dir_reload() {
+    local line mnt created known i
+    local first=1
+    IMAGE_HOST_DIR=""
+    if [[ -z "${HOST_DIR_STATE:-}" || ! -s "$HOST_DIR_STATE" ]]; then
+        return 0
+    fi
+    while IFS= read -r line; do
+        if [[ "$first" == 1 ]]; then
+            IMAGE_HOST_DIR="$line"
+            first=0
+            continue
+        fi
+        [[ "$line" == M$'\t'* ]] || continue
+        mnt="${line#M$'\t'}"
+        created="${mnt##*$'\t'}"
+        mnt="${mnt%%$'\t'*}"
+        known=0
+        for i in "${!MOUNTED_BY_CLONIE[@]}"; do
+            if [[ "${MOUNTED_BY_CLONIE[$i]}" == "$mnt" ]]; then
+                known=1
+                break
+            fi
+        done
+        if [[ "$known" == 0 ]]; then
+            MOUNTED_BY_CLONIE+=("$mnt")
+            MOUNTED_CREATED+=("$created")
+        fi
+    done < "$HOST_DIR_STATE"
+}
+
+host_dir_active() {
+    [[ -n "$IMAGE_HOST_DIR" && -d "$IMAGE_HOST_DIR" ]]
+}
+
+host_backup_dir() {
+    local ordner_name="$1"
+    local stamp
+
+    [[ -n "$IMAGE_HOST_DIR" && -d "$IMAGE_HOST_DIR" ]] || return 1
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    BACKUP_DIR="${IMAGE_HOST_DIR%/}/${ordner_name}_${stamp}"
+    mkdir -p "$BACKUP_DIR" ||
+        die "Unterordner konnte nicht erstellt werden: $BACKUP_DIR"
+    return 0
+}
+
+
+ask_target_dir() {
+    local src_disk="${1:-}"
+    local dir dir_disk
+
+    while true; do
+        print_prompt "Zielverzeichnis für das Image: "
+        if ! read -r dir; then
+            die "Vom Benutzer abgebrochen."
+        fi
+        case "$dir" in
+            0) exit 0 ;;
+            00) menu_quit ;;
+            000) user_abort ;;
+        esac
+        if [[ -z "$dir" ]]; then
+            print_warn "Kein Verzeichnis angegeben – bitte erneut eingeben (0 = zurück)."
+            continue
+        fi
+        if [[ ! -d "$dir" ]]; then
+            print_warn "Verzeichnis existiert nicht: $dir – bitte erneut eingeben (0 = zurück)."
+            continue
+        fi
+        if [[ ! -w "$dir" ]]; then
+            print_warn "Verzeichnis ist nicht beschreibbar: $dir – bitte erneut eingeben (0 = zurück)."
+            continue
+        fi
+        if [[ -n "$src_disk" ]]; then
+            dir_disk="$(target_parent_disk "$dir")"
+            if [[ -n "$dir_disk" && "$dir_disk" == "$src_disk" ]]; then
+                print_warn "Verzeichnis liegt auf der Quellplatte ($src_disk) – bitte ein Verzeichnis auf einer ANDEREN Platte wählen."
+                continue
+            fi
+        fi
+        ASK_DIR_RESULT="${dir%/}"
+        return 0
+    done
+}
+
+ask_image_file() {
+    local prompt="$1"
+    local path
+
+    while true; do
+        print_prompt "$prompt"
+        if ! read -r path; then
+            die "Vom Benutzer abgebrochen."
+        fi
+        case "$path" in
+            0) exit 0 ;;
+            00) menu_quit ;;
+            000) user_abort ;;
+        esac
+        if [[ -z "$path" ]]; then
+            print_warn "Kein Pfad angegeben – bitte erneut eingeben (0 = zurück)."
+            continue
+        fi
+        if [[ ! -f "$path" ]]; then
+            print_warn "Datei nicht gefunden: $path – bitte erneut eingeben (0 = zurück)."
+            continue
+        fi
+        ASK_FILE_RESULT="$path"
+        return 0
+    done
+}
+
+ask_image_base() {
+    local prompt="Image-Basisname (ohne Endung): "
+    local base
+
+    if [[ -n "${1:-}" ]]; then
+        prompt="$1"
+    fi
+    while true; do
+        print_prompt "$prompt"
+        if ! read -r base; then
+            die "Vom Benutzer abgebrochen."
+        fi
+        case "$base" in
+            0) exit 0 ;;
+            00) menu_quit ;;
+            000) user_abort ;;
+        esac
+        if [[ -z "$base" ]]; then
+            print_warn "Kein Name angegeben – bitte erneut eingeben (0 = zurück)."
+            continue
+        fi
+        if [[ "$base" == */* ]]; then
+            print_warn "Der Name darf keinen Pfad enthalten – bitte erneut eingeben."
+            continue
+        fi
+        ASK_BASE_RESULT="$base"
+        return 0
+    done
+}
+
+ask_output_file() {
+    local default_file="$1"
+    local file parent
+
+    while true; do
+        print_prompt "Zieldatei [$default_file]: "
+        if ! read -r file; then
+            die "Vom Benutzer abgebrochen."
+        fi
+        case "$file" in
+            0) exit 0 ;;
+            00) menu_quit ;;
+            000) user_abort ;;
+        esac
+        [[ -n "$file" ]] || file="$default_file"
+        if [[ -e "$file" ]]; then
+            print_warn "Datei existiert bereits: $file – bitte anderen Namen wählen."
+            continue
+        fi
+        parent="$(dirname -- "$file")"
+        if [[ ! -d "$parent" || ! -w "$parent" ]]; then
+            print_warn "Zielverzeichnis fehlt oder ist nicht beschreibbar: $parent – bitte erneut eingeben."
+            continue
+        fi
+        ASK_FILE_RESULT="$file"
+        return 0
+    done
+}
+
+choose_image_host() {
+    local mode="${1:-start}"
+    local rows=() row
+    local -a opts=() kinds=()
+    local dev size fstype label mnt display
+    local zero_label
+    local choice i sel srcdev
+
+    while true; do
+        rows=()
+        opts=()
+        kinds=()
+        while IFS= read -r row; do
+            rows+=("$row")
+        done < <(list_fs_volumes)
+
+        echo
+        print_heading "Image-Host-Ordner wählen:"
+        if [[ -n "$IMAGE_HOST_DIR" ]]; then
+            print_kv_path "Aktuell:     " "$IMAGE_HOST_DIR"
+        fi
+        print_text "Laufwerk/Ordner, unter dem Images liegen oder entstehen:"
+        echo
+
+        if [[ "${#rows[@]}" -gt 0 ]]; then
+            for i in "${!rows[@]}"; do
+                IFS='|' read -r dev size fstype label mnt <<<"${rows[$i]}"
+                display="${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}  [${fstype:-?}]"
+                if [[ -n "$label" ]]; then
+                    display="$display '$label'"
+                fi
+                if [[ -n "$mnt" ]]; then
+                    display="$display  (eingehängt: $mnt)"
+                else
+                    display="$display  (nicht eingehängt)"
+                fi
+                opts+=("$display")
+                kinds+=("dev:$dev")
+            done
+        else
+            print_warn "Keine Datenträger mit Dateisystem gefunden."
+        fi
+        opts+=("Pfad manuell eingeben")
+        kinds+=("manual")
+
+        for i in "${!opts[@]}"; do
+            printf '%b\n' "${COLOR_OTHER}$((i + 1)))${COLOR_RESET} ${opts[$i]}"
+        done
+
+        zero_label="Zurück"
+        if [[ "$mode" == "start" ]]; then
+            zero_label="Überspringen (keinen Host-Ordner festlegen)"
+        fi
+        printf '%b\n' "${COLOR_OTHER}0)${COLOR_RESET} ${zero_label}   ${COLOR_OTHER}00)${COLOR_RESET} Beenden   ${COLOR_OTHER}000)${COLOR_RESET} Abbrechen"
+        echo
+
+        print_prompt "Auswahl: "
+        if ! read -r choice; then
+            die "Vom Benutzer abgebrochen."
+        fi
+        if [[ "$choice" == "0" ]]; then
+            if [[ "$mode" == "start" ]]; then
+                IMAGE_HOST_DIR=""
+                return 0
+            fi
+            exit 0
+        fi
+        if [[ "$choice" == "00" ]]; then
+            menu_quit
+        fi
+        if [[ "$choice" == "000" ]]; then
+            user_abort
+        fi
+        if [[ "$choice" =~ ^[0-9]+$ ]] &&
+            ((choice >= 1 && choice <= ${#opts[@]})); then
+            sel="${kinds[$((choice - 1))]}"
+            if [[ "$sel" == "manual" ]]; then
+                print_prompt "Pfad zum Image-Host-Ordner: "
+                if ! read -r sel; then
+                    die "Vom Benutzer abgebrochen."
+                fi
+                if [[ -z "$sel" ]]; then
+                    print_text "Kein Pfad angegeben."
+                    continue
+                fi
+                if [[ ! -d "$sel" ]]; then
+                    print_warn "Verzeichnis nicht gefunden: $sel"
+                    continue
+                fi
+                IMAGE_HOST_DIR="${sel%/}"
+                srcdev="$(df -P "$IMAGE_HOST_DIR" 2>/dev/null | awk 'NR == 2 { print $1 }')"
+                if [[ "$srcdev" == /dev/* ]]; then
+                    host_dir_upgrade_driver "$srcdev" "$IMAGE_HOST_DIR"
+                    IMAGE_HOST_DIR="$HOST_MOUNT"
+                fi
+            else
+                if ! host_dir_for_device "${sel#dev:}"; then
+                    continue
+                fi
+                IMAGE_HOST_DIR="$HOST_MOUNT"
+            fi
+            if [[ ! -w "$IMAGE_HOST_DIR" ]]; then
+                print_warn "Image-Host-Ordner ist nicht beschreibbar – nur Wiederherstellen möglich."
+            fi
+            print_kv_path "Image-Host-Ordner: " "$IMAGE_HOST_DIR"
+            host_dir_persist
+            if [[ "$mode" == "menu" ]]; then
+                exit 43
+            fi
+            return 0
+        fi
+        print_text "Ungültige Auswahl."
+    done
+}
+
+collect_image_files() {
+    local dir="$1" f
+
+    IMG_FILES=()
+    IMG_NAMES=()
+    for f in "$dir"/*.img "$dir"/*.img.zst "$dir"/*.img.xz "$dir"/*.img.gz \
+        "$dir"/*.img.enc "$dir"/*.img.zst.enc "$dir"/*.img.xz.enc \
+        "$dir"/*.img.gz.enc "$dir"/*.tar; do
+        [[ -f "$f" ]] || continue
+        IMG_FILES+=("$f")
+        IMG_NAMES+=("$(basename "$f")")
+    done
+}
+
+choose_image_from_host() {
+    local sub sel sel_dir
+    local -a subdirs=() opts=() paths=()
+
+    while true; do
+        subdirs=()
+        for sub in "$IMAGE_HOST_DIR"/*/; do
+            [[ -d "$sub" ]] || continue
+            sub="${sub%/}"
+            subdirs+=("$(basename "$sub")")
+        done
+
+        if [[ "${#subdirs[@]}" -gt 0 ]]; then
+            opts=("${subdirs[@]}")
+            paths=("${subdirs[@]}")
+            opts+=("Pfad manuell eingeben")
+            paths+=("MANUAL")
+            menu_choose "Unterordner im Image-Host-Ordner wählen:" "${opts[@]}"
+            sel="${paths[$SELECTED_ITEM_INDEX]}"
+            if [[ "$sel" == "MANUAL" ]]; then
+                ask_image_file "Pfad zum Image (.zst/.xz/.gz/.img/.tar; verschlüsselt mit .enc): "
+                SELECTED_IMAGE_FILE="$ASK_FILE_RESULT"
+                return 0
+            fi
+            sel_dir="${IMAGE_HOST_DIR%/}/$sel"
+            collect_image_files "$sel_dir"
+            if [[ "${#IMG_FILES[@]}" -gt 0 ]]; then
+                menu_choose "Image-Datei in '$sel' wählen:" "${IMG_NAMES[@]}"
+                SELECTED_IMAGE_FILE="${IMG_FILES[$SELECTED_ITEM_INDEX]}"
+                return 0
+            fi
+            print_warn "Keine Images im Unterordner gefunden: $sel_dir"
+            print_text "Bitte erneut wählen."
+        else
+            print_warn "Keine Unterordner im Image-Host-Ordner: $IMAGE_HOST_DIR"
+            collect_image_files "$IMAGE_HOST_DIR"
+            if [[ "${#IMG_FILES[@]}" -gt 0 ]]; then
+                menu_choose "Image-Datei im Image-Host-Ordner wählen:" "${IMG_NAMES[@]}"
+                SELECTED_IMAGE_FILE="${IMG_FILES[$SELECTED_ITEM_INDEX]}"
+                return 0
+            fi
+            print_prompt "Pfad zum Image (.zst/.xz/.gz/.img/.tar; verschlüsselt mit .enc): "
+            read -r sel
+            ask_image_file "Pfad zum Image (.zst/.xz/.gz/.img/.tar; verschlüsselt mit .enc): "
+            SELECTED_IMAGE_FILE="$ASK_FILE_RESULT"
+            return 0
+        fi
+    done
+}
+
+
+list_disks() {
+    lsblk -d -e 7 -o PATH,SIZE,TYPE,MODEL -P 2>/dev/null |
+        awk -F'"' '$0 ~ /TYPE="disk"/ { printf "%s|%s|%s\n", $2, $4, $6 }'
+}
+
+choose_disk() {
+    local purpose="$1"
+    local rows=()
+    local row
+    local display
+
+    while IFS= read -r row; do
+        rows+=("$row")
+    done < <(list_disks)
+
+    if [[ "${#rows[@]}" -eq 0 ]]; then
+        die "Keine Festplatten gefunden (lsblk leer)."
+    fi
+
+    local options=()
+    local paths=()
+    for row in "${rows[@]}"; do
+        IFS='|' read -r dev size model <<<"$row"
+        paths+=("$dev")
+        if [[ -n "$model" ]]; then
+            display="${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}  (${model})"
+        else
+            display="${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}"
+        fi
+        options+=("$display")
+    done
+
+    echo
+    menu_choose "Festplatte wählen ($purpose):" "${options[@]}"
+    SELECTED_DISK="${paths[$SELECTED_ITEM_INDEX]}"
+}
+
+
+list_partitions() {
+    local disk="${1:-}"
+
+    if [[ -n "$disk" ]]; then
+        lsblk -rno PATH,SIZE,TYPE "$disk" 2>/dev/null |
+            awk '$3 == "part" { print $1 "|" $2 }'
+    else
+        lsblk -rno PATH,SIZE,TYPE 2>/dev/null |
+            awk '$3 == "part" { print $1 "|" $2 }'
+    fi
+}
+
+choose_partition() {
+    local purpose="$1"
+    local disk="${2:-}"
+    local rows=()
+    local row
+    local dev size fs
+    local options=()
+    local paths=()
+
+    while IFS= read -r row; do
+        rows+=("$row")
+    done < <(list_partitions "$disk")
+
+    if [[ "${#rows[@]}" -eq 0 ]]; then
+        die "Keine Partitionen gefunden ($purpose)."
+    fi
+
+    for row in "${rows[@]}"; do
+        IFS='|' read -r dev size <<<"$row"
+        fs="$(fs_of_part "$dev")"
+        paths+=("$dev")
+        if [[ -n "$fs" ]]; then
+            options+=("${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}  [$fs]")
+        else
+            options+=("${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}  [kein FS]")
+        fi
+    done
+
+    menu_choose "Partition wählen ($purpose):" "${options[@]}"
+    SELECTED_PART="${paths[$SELECTED_ITEM_INDEX]}"
+}
+
+choose_partition_any() {
+    local purpose="$1"
+    local rows=()
+    local row dev size fs
+    local paths=()
+    local i input n
+    local first_disk
+
+    while IFS= read -r row; do
+        rows+=("$row")
+    done < <(list_partitions "")
+
+    if [[ "${#rows[@]}" -eq 0 ]]; then
+        die "Keine Partitionen gefunden ($purpose)."
+    fi
+
+    echo
+    print_heading "Partition(en) wählen ($purpose):"
+    for i in "${!rows[@]}"; do
+        IFS='|' read -r dev size <<<"${rows[$i]}"
+        fs="$(fs_of_part "$dev")"
+        paths+=("$dev")
+        if [[ -n "$fs" ]]; then
+            printf '%b\n' "${COLOR_OTHER}$((i + 1)))${COLOR_RESET} ${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}  [${fs}]"
+        else
+            printf '%b\n' "${COLOR_OTHER}$((i + 1)))${COLOR_RESET} ${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}  [kein FS]"
+        fi
+    done
+    echo
+    print_text "Eine Partition (z. B. 3) ODER mehrere (z. B. 3,4,5,6 oder 4-7) angeben."
+    print_text "Mehrere werden in EIN Image gesichert und daraus einzeln wiederherstellbar."
+    echo
+
+    while true; do
+        print_prompt "Auswahl (0 = zurück, 00 = beenden, 000 = abbrechen): "
+        if ! read -r input; then
+            die "Vom Benutzer abgebrochen."
+        fi
+        input="${input//[[:space:]]/}"
+
+        if [[ "$input" == "0" ]]; then
+            exit 0
+        fi
+        if [[ "$input" == "00" ]]; then
+            menu_quit
+        fi
+        if [[ "$input" == "000" ]]; then
+            user_abort
+        fi
+
+        if [[ -z "$input" ]]; then
+            print_text "Ungültige Auswahl."
+            continue
+        fi
+
+        if [[ "$input" =~ ^[0-9]+$ ]] &&
+            ((input >= 1 && input <= ${#paths[@]})); then
+            SELECTED_PART="${paths[$((input - 1))]}"
+            PART_MULTI=0
+            return 0
+        fi
+
+        if [[ "$input" == *","* || "$input" == *"-"* ]] &&
+            parse_selection "$input" "${#paths[@]}"; then
+
+            if [[ "${#SELECTED_NUMBERS[@]}" -eq 1 ]]; then
+                SELECTED_PART="${paths[$((SELECTED_NUMBERS[0] - 1))]}"
+                PART_MULTI=0
+                return 0
+            fi
+
+            first_disk="$(source_disk_of_part "${paths[$((SELECTED_NUMBERS[0] - 1))]}")"
+            PART_MULTI_PATHS=()
+            for n in "${SELECTED_NUMBERS[@]}"; do
+                dev="${paths[$((n - 1))]}"
+                if [[ "$(source_disk_of_part "$dev")" != "$first_disk" ]]; then
+                    die "Mehrfachauswahl muss auf EINER Platte liegen – $dev liegt nicht auf $first_disk. Bitte mehrere Platten einzeln sichern."
+                fi
+                PART_MULTI_PATHS+=("$dev")
+            done
+            PART_MULTI_DISK="$first_disk"
+            PART_MULTI=1
+            return 0
+        fi
+
+        print_text "Ungültige Auswahl."
+    done
+}
+
+dev_size_bytes() {
+    local size
+
+    size="$(blockdev --getsize64 "$1" 2>/dev/null)" ||
+        die "Größe von $1 konnte nicht ermittelt werden."
+
+    printf '%s' "$size"
+}
+
+fmt_size() {
+    local bytes="$1"
+
+    if command_exists numfmt; then
+        numfmt --to=iec --suffix=B "$bytes"
+    else
+        awk -v b="$bytes" 'BEGIN { printf "%.1fGiB", b / 1073741824 }'
+    fi
+}
+
+fs_of_part() {
+    local out
+
+    out="$(blkid -o value -s TYPE "$1" 2>/dev/null | awk 'NR == 1 { print; exit }')"
+    if [[ -n "$out" ]]; then
+        printf '%s' "$out"
+        return 0
+    fi
+
+    blkid "$1" 2>/dev/null | awk -F'"' '/TYPE=/ { print $2; exit }'
+}
+
+source_disk_of_part() {
+    local pkname
+
+    pkname="$(lsblk -no PKNAME "$1" 2>/dev/null | awk 'NF { print $1; exit }')"
+
+    if [[ -n "$pkname" ]]; then
+        printf '/dev/%s' "$pkname"
+    else
+        printf '%s' "$1"
+    fi
+}
+
+ensure_not_mounted() {
+    local dev="$1"
+    local mounts=()
+    local m
+
+    while IFS= read -r m; do
+        [[ -n "$m" ]] && mounts+=("$m")
+    done < <(lsblk -no MOUNTPOINTS "$dev" 2>/dev/null || true)
+
+    if [[ "${#mounts[@]}" -gt 0 ]]; then
+        die "$dev ist eingehängt (${mounts[*]}) – bitte vorher aushängen."
+    fi
+}
+
+ensure_disk_not_mounted() {
+    local disk="$1"
+    local part
+
+    ensure_not_mounted "$disk"
+
+    while IFS='|' read -r part _; do
+        ensure_not_mounted "$part"
+    done < <(list_partitions "$disk")
+}
+
+target_parent_disk() {
+    local dir="$1"
+    local srcdev
+    local pkname
+
+    srcdev="$(df -P "$dir" 2>/dev/null | awk 'NR == 2 { print $1 }')"
+    [[ -n "$srcdev" ]] || { printf ''; return 0; }
+    [[ -b "$srcdev" ]] || { printf ''; return 0; }
+
+    pkname="$(lsblk -no PKNAME "$srcdev" 2>/dev/null | awk 'NF { print $1; exit }')"
+
+    if [[ -n "$pkname" ]]; then
+        printf '/dev/%s' "$pkname"
+    else
+        printf '%s' "$srcdev"
+    fi
+}
+
+
+warn_windows_source() {
+    local dev="$1"
+    local part
+    local fs
+    local has_ntfs=0
+    local is_disk=0
+
+    if [[ "$(lsblk -rno TYPE "$dev" 2>/dev/null | awk 'NR == 1 { print $1 }')" == "disk" ]]; then
+        is_disk=1
+    fi
+
+    if [[ "$is_disk" -eq 1 ]]; then
+        while IFS='|' read -r part _; do
+            fs="$(fs_of_part "$part")"
+            [[ "$fs" == "ntfs" ]] && has_ntfs=1
+        done < <(list_partitions "$dev")
+    else
+        fs="$(fs_of_part "$dev")"
+        [[ "$fs" == "ntfs" ]] && has_ntfs=1
+    fi
+
+    if [[ "$has_ntfs" -eq 1 ]]; then
+        echo
+        print_warn "WARNUNG: Windows-/NTFS-Partition(en) erkannt."
+        print_warn "  - Windows 'Schnellstart'/Ruhezustand lässt NTFS in einem"
+        print_warn "    inkonsistenten Zustand zurück -> Kopie kann beschädigt sein."
+        print_warn "    Windows vorher VOLL herunterfahren: 'shutdown /s /t 0'"
+        print_warn "    (Schnellstart dauerhaft aus: 'powercfg /h off' in Windows)"
+        print_warn "  - BitLocker-Platten werden 1:1 mitkopiert; für den Zugriff auf"
+        print_warn "    die Kopie wird der BitLocker-Wiederherstellungsschlüssel gebraucht."
+        print_warn "  - MSR-/Recovery-Partitionen werden von der 1:1-Kopie erfasst."
+        echo
+    fi
+}
+
+
+choose_compression() {
+    local options=()
+    local kinds=()
+
+    if command_exists zstd; then
+        options+=("zstd  Stufe 1  – schnellste Kompression, ideal für große Platten")
+        kinds+=("zstd1")
+        options+=("zstd  Stufe 3  – bester Kompromiss aus Tempo und Größe (Standard)")
+        kinds+=("zstd3")
+        options+=("zstd  Stufe 19 – maximale Verdichtung, deutlich langsamer")
+        kinds+=("zstd19")
+    fi
+
+    if command_exists xz; then
+        options+=("xz    Stufe 6  – hohe Verdichtung, langsam (multithreaded)")
+        kinds+=("xz")
+    fi
+
+    if command_exists gzip; then
+        options+=("gzip  Stufe 6  – klassisch, auf jedem System verfügbar")
+        kinds+=("gzip")
+    fi
+
+    options+=("ohne           – Rohkopie (.img), schnellstes Schreiben, größte Datei")
+    kinds+=("none")
+
+    local ci
+    MENU_DEFAULT_CHOICE="1"
+    for ci in "${!kinds[@]}"; do
+        if [[ "${kinds[$ci]}" == "zstd3" ]]; then
+            MENU_DEFAULT_CHOICE=$((ci + 1))
+        fi
+    done
+
+    menu_choose "Kompression wählen:" "${options[@]}"
+
+    case "${kinds[$SELECTED_ITEM_INDEX]}" in
+        zstd1)
+            COMPRESSOR=(zstd -T0 -q -1)
+            DECOMPRESSOR=(zstd -d -q -c)
+            IMAGE_SUFFIX=".zst"
+            COMPRESSION="zstd Stufe 1 (multithreaded)"
+            ;;
+        zstd3)
+            COMPRESSOR=(zstd -T0 -q -3)
+            DECOMPRESSOR=(zstd -d -q -c)
+            IMAGE_SUFFIX=".zst"
+            COMPRESSION="zstd Stufe 3 (multithreaded)"
+            ;;
+        zstd19)
+            COMPRESSOR=(zstd -T0 -q -19)
+            DECOMPRESSOR=(zstd -d -q -c)
+            IMAGE_SUFFIX=".zst"
+            COMPRESSION="zstd Stufe 19 (multithreaded)"
+            ;;
+        xz)
+            COMPRESSOR=(xz -T0 -q -6)
+            DECOMPRESSOR=(xz -d -q -c)
+            IMAGE_SUFFIX=".xz"
+            COMPRESSION="xz Stufe 6 (multithreaded)"
+            ;;
+        gzip)
+            COMPRESSOR=(gzip -6)
+            DECOMPRESSOR=(gzip -d -c)
+            IMAGE_SUFFIX=".gz"
+            COMPRESSION="gzip Stufe 6"
+            ;;
+        none)
+            COMPRESSOR=(cat)
+            DECOMPRESSOR=(cat)
+            IMAGE_SUFFIX=".img"
+            COMPRESSION="ohne (Rohkopie)"
+            ;;
+    esac
+}
+
+decompressor_from_suffix() {
+    local image="$1"
+
+    DECRYPTOR=()
+    case "$image" in
+        *.enc)
+            if ! command_exists openssl; then
+                collect_missing required openssl
+            fi
+            DECRYPTOR=(openssl enc -d "${ENC_DECIPHER_ARGS[@]}" -pass env:CLONIE_ENC_PASS)
+            image="${image%.enc}"
+            ;;
+    esac
+
+    case "$image" in
+        *.zst)
+            command_exists zstd || die "zstd ist nicht installiert, kann $image nicht dekomprimieren."
+            DECOMPRESSOR=(zstd -d -q -c)
+            ;;
+        *.xz)
+            command_exists xz || die "xz ist nicht installiert, kann $image nicht dekomprimieren."
+            DECOMPRESSOR=(xz -d -q -c)
+            ;;
+        *.gz)
+            command_exists gzip || die "gzip ist nicht installiert, kann $image nicht dekomprimieren."
+            DECOMPRESSOR=(gzip -d -c)
+            ;;
+        *)
+            DECOMPRESSOR=(cat)
+            ;;
+    esac
+}
+
+
+require_openssl() {
+    if ! command_exists openssl; then
+        collect_missing required openssl
+    fi
+}
+
+ask_passphrase() {
+    local prompt="$1"
+    local pw
+
+    print_prompt "$prompt: "
+    if ! read -r -s pw; then
+        die "Vom Benutzer abgebrochen."
+    fi
+    printf '\n'
+    case "$pw" in
+        000) user_abort ;;
+        00) menu_quit ;;
+    esac
+    ENC_PASSPHRASE="$pw"
+}
+
+ask_encryption() {
+    local pw
+
+    ENCRYPT_IMAGE=0
+    ENC_PASSPHRASE=""
+    echo
+    if ! confirm "Image verschlüsseln (AES-256, Passwort)?" "N"; then
+        return 0
+    fi
+    print_warn "ACHTUNG: Geht das Passwort verloren, sind die Daten UNWIEDERBRINGLICH verloren - es gibt keine Rettungsmöglichkeit mehr."
+    require_openssl
+
+    while true; do
+        ask_passphrase "Passwort (nicht anzeigen)"
+        pw="$ENC_PASSPHRASE"
+        if [[ -z "$pw" ]]; then
+            print_warn "Leeres Passwort – bitte erneut eingeben."
+            continue
+        fi
+        if (( ${#pw} < 8 )); then
+            confirm "Passwort ist kürzer als 8 Zeichen – trotzdem verwenden?" "N" && break
+            continue
+        fi
+        break
+    done
+    while true; do
+        ask_passphrase "Passwort wiederholen"
+        if [[ "$ENC_PASSPHRASE" == "$pw" ]]; then
+            break
+        fi
+        print_warn "Passwörter stimmen nicht überein – bitte erneut."
+    done
+    ENCRYPT_IMAGE=1
+    ENC_PASSPHRASE="$pw"
+    export CLONIE_ENC_PASS="$ENC_PASSPHRASE"
+}
+
+write_passcheck() {
+    local out="$1"
+
+    printf '%s' "$ENC_PASSCHECK_TOKEN" |
+        openssl enc "${ENC_CIPHER_ARGS[@]}" -pass env:CLONIE_ENC_PASS -out "$out"
+}
+
+password_matches_passcheck() {
+    local passcheck="$1"
+    local have=""
+
+    have="$(openssl enc -d "${ENC_DECIPHER_ARGS[@]}" -pass env:CLONIE_ENC_PASS -in "$passcheck" 2>/dev/null)" || return 1
+    [[ "$have" == "$ENC_PASSCHECK_TOKEN" ]]
+}
+
+restore_ask_password() {
+    local passcheck="${1:-}"
+    local try=0
+
+    echo
+    if [[ -n "$passcheck" && -f "$passcheck" ]]; then
+        while ((try < 3)); do
+            ask_passphrase "Passwort für verschlüsseltes Image"
+            export CLONIE_ENC_PASS="$ENC_PASSPHRASE"
+            if password_matches_passcheck "$passcheck"; then
+                return 0
+            fi
+            try=$((try + 1))
+            print_warn "Passwort falsch (Passcheck fehlgeschlagen)."
+        done
+        die "Dreimal ein falsches Passwort – Abbruch."
+    fi
+    if [[ -n "$passcheck" ]]; then
+        print_warn "Keine Passcheck-Datei gefunden: $passcheck – das Passwort kann vor dem Schreiben nicht verifiziert werden."
+    else
+        print_warn "Kein Passcheck im Image – das Passwort kann vor dem Schreiben nicht verifiziert werden."
+    fi
+    confirm "Ohne Passwortprüfung fortfahren?" "N" || die "Abgebrochen."
+    ask_passphrase "Passwort für verschlüsseltes Image"
+    export CLONIE_ENC_PASS="$ENC_PASSPHRASE"
+}
+
+
+
+create_image() {
+    local kind="$1"
+    local src=""
+    local src_disk=""
+    local src_size
+    local image_dir
+    local image_base
+    local image_path
+    local manifest
+    local checksum
+    local dir_disk
+    local stamp n
+    local pipeline_status
+    local enc_suffix=""
+
+    echo
+    print_heading "=============================================="
+    if [[ "$kind" == "disk" ]]; then
+        print_heading "  Image von FESTPLATTE erstellen"
+    else
+        print_heading "  Image von PARTITION(EN) erstellen"
+    fi
+    print_heading "=============================================="
+    echo
+
+    if [[ "$kind" == "disk" ]]; then
+        choose_disk "Quelle"
+        src="$SELECTED_DISK"
+        src_disk="$src"
+        ensure_disk_not_mounted "$src"
+    else
+        choose_partition_any "Quelle"
+        if [[ "$PART_MULTI" -eq 1 ]]; then
+            multi_backup_run "$PART_MULTI_DISK" "${PART_MULTI_PATHS[@]}"
+            return 0
+        fi
+        src="$SELECTED_PART"
+        src_disk="$(source_disk_of_part "$src")"
+        ensure_not_mounted "$src"
+    fi
+
+    src_size="$(dev_size_bytes "$src")"
+    warn_windows_source "$src"
+
+    choose_compression
+    ask_encryption
+    if ((ENCRYPT_IMAGE)); then
+        enc_suffix=".enc"
+    fi
+
+    if host_dir_active; then
+        ask_image_base "Name für den Sicherungsordner: "
+        host_backup_dir "$ASK_BASE_RESULT"
+        image_dir="$BACKUP_DIR"
+        echo
+        print_text "Gespeichert wird im Image-Host-Ordner, Unterordner:"
+        print_kv_path "   " "$image_dir"
+        [[ -w "$image_dir" ]] ||
+            die "Zielverzeichnis ist nicht beschreibbar: $image_dir"
+        dir_disk="$(target_parent_disk "$image_dir")"
+        if [[ -n "$dir_disk" && "$dir_disk" == "$src_disk" ]]; then
+            die "Zielverzeichnis liegt auf der Quellplatte ($src_disk) – das Schreiben würde die Quelle zerstören. Bitte ein Verzeichnis auf einer ANDEREN Platte wählen."
+        fi
+        stamp="$(date +%Y%m%d-%H%M%S)"
+        image_base="$(basename "$src_disk")_${stamp}"
+        n=2
+        while [[ -e "${image_dir%/}/${image_base}${IMAGE_SUFFIX}${enc_suffix}" ]]; do
+            image_base="$(basename "$src_disk")_${stamp}_${n}"
+            n=$((n + 1))
+        done
+        image_path="${image_dir%/}/${image_base}${IMAGE_SUFFIX}${enc_suffix}"
+    else
+        echo
+        print_text "Wohin soll das Image gespeichert werden?"
+        print_warn "WICHTIG: NICHT auf die Quellplatte ($src_disk) selbst!"
+        echo
+        ask_target_dir "$src_disk"
+        image_dir="$ASK_DIR_RESULT"
+        while true; do
+            ask_image_base
+            image_base="$ASK_BASE_RESULT"
+            image_path="${image_dir%/}/${image_base}${IMAGE_SUFFIX}${enc_suffix}"
+            if [[ ! -e "$image_path" ]]; then
+                break
+            fi
+            print_warn "Image existiert bereits: $image_path – bitte anderen Namen wählen."
+        done
+    fi
+    manifest="${image_path}.manifest.txt"
+    checksum="${image_path}.sha256"
+
+    echo
+    print_kv_path "Quelle:       " "$src"
+    print_kv "Größe:         $(fmt_size "$src_size")"
+    print_kv "Kompression:   $COMPRESSION"
+    if ((ENCRYPT_IMAGE)); then
+        print_kv "Verschlüsselung: AES-256-CTR (openssl, PBKDF2, $ENC_ITER Iterationen)"
+    fi
+    print_kv_path "Image:        " "$image_path"
+    echo
+
+    confirm "Image-Erstellung wirklich starten?" "N" ||
+        { print_text "Abgebrochen."; return 0; }
+
+    {
+        printf 'Erstellt: '
+        date -Iseconds 2>/dev/null || date
+        printf 'Quelle: %s\n' "$src"
+        printf 'Quellgröße_bytes: %s\n' "$src_size"
+        printf 'Kompression: %s\n' "$COMPRESSION"
+        if ((ENCRYPT_IMAGE)); then
+            printf 'Verschlüsselung: AES-256-CTR (openssl, PBKDF2, %s Iterationen)\n' "$ENC_ITER"
+        fi
+        printf 'Blockgröße: %s\n\n' "$BLOCK_SIZE"
+        if [[ "$kind" == "disk" ]]; then
+            echo "Partitionen:"
+            lsblk -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,PARTLABEL "$src" 2>/dev/null
+            echo
+            echo "Partitionstabelle (sfdisk-Dump):"
+            sfdisk -d "$src" 2>/dev/null || true
+        fi
+    } > "$manifest"
+
+    print_other "Image-Erstellung läuft ..."
+
+    if ((ENCRYPT_IMAGE)); then
+        write_passcheck "${image_path}.passcheck" ||
+            die "Passcheck-Datei (${image_path}.passcheck) konnte nicht erstellt werden."
+        set +e
+        dd \
+            if="$src" \
+            bs="$BLOCK_SIZE" \
+            ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+            ${DD_STATUS[@]+"${DD_STATUS[@]}"} |
+            "${COMPRESSOR[@]}" |
+            openssl enc "${ENC_CIPHER_ARGS[@]}" -pass env:CLONIE_ENC_PASS > "$image_path"
+        pipeline_status=("${PIPESTATUS[@]}")
+        set -e
+
+        if ((pipeline_status[0] != 0 || pipeline_status[1] != 0 || pipeline_status[2] != 0)); then
+            rm -f -- "$image_path" "${image_path}.passcheck"
+            die "Image-Erstellung fehlgeschlagen (dd=${pipeline_status[0]}, Kompressor=${pipeline_status[1]}, Verschlüsselung=${pipeline_status[2]})."
+        fi
+    else
+        set +e
+        dd \
+            if="$src" \
+            bs="$BLOCK_SIZE" \
+            ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+            ${DD_STATUS[@]+"${DD_STATUS[@]}"} |
+            "${COMPRESSOR[@]}" > "$image_path"
+        pipeline_status=("${PIPESTATUS[@]}")
+        set -e
+
+        if ((pipeline_status[0] != 0 || pipeline_status[1] != 0)); then
+            rm -f -- "$image_path"
+            die "Image-Erstellung fehlgeschlagen (dd=${pipeline_status[0]}, Kompressor=${pipeline_status[1]})."
+        fi
+    fi
+
+    sync
+
+    print_text "SHA-256-Prüfsumme wird berechnet ..."
+    sha256sum "$image_path" > "$checksum"
+
+    echo
+    print_other "Image erfolgreich erstellt:"
+    print_kv_path "   Image:        " "$image_path"
+    print_kv_path "   Manifest:     " "$manifest"
+    print_kv_path "   Prüfsumme:    " "$checksum"
+    if ((ENCRYPT_IMAGE)); then
+        print_kv_path "   Passcheck:    " "${image_path}.passcheck"
+    fi
+}
+
+
+restore_image() {
+    local image=""
+
+    echo
+    print_heading "=============================================="
+    print_heading "  Image ZURÜCKSPIELEN (recover)"
+    print_heading "=============================================="
+    echo
+
+    if host_dir_active; then
+        choose_image_from_host
+        image="$SELECTED_IMAGE_FILE"
+    else
+        ask_image_file "Pfad zum Image (.zst/.xz/.gz/.img/.tar; verschlüsselt mit .enc): "
+        image="$ASK_FILE_RESULT"
+    fi
+
+    case "$image" in
+        *.tar)
+            print_text "Partitions-Image erkannt – Wiederherstellung läuft über den Multi-Restore."
+            multi_restore_run "$image"
+            return 0
+            ;;
+    esac
+
+    restore_image_run "$image"
+}
+
+restore_image_run() {
+    local image="$1"
+    local manifest
+    local src_size=""
+    local target_kind=""
+    local tgt=""
+    local tgt_disk=""
+    local tgt_size
+    local pipeline_status
+
+    [[ -f "$image" ]] || die "Image nicht gefunden: $image"
+
+    case "$image" in
+        *.tar)
+            die "Mehrpartitions-Image erkannt – 'Image zurückspielen (recover)' routet .tar automatisch an den Multi-Restore."
+            ;;
+    esac
+
+    manifest="${image}.sha256"
+
+    if [[ -f "$manifest" ]]; then
+        print_text "Prüfsumme wird geprüft ..."
+        (
+            cd "$(dirname "$image")" &&
+                sha256sum -c "$(basename "$image").sha256"
+        ) || die "Prüfsumme stimmt nicht – Image beschädigt oder falsches Ziel."
+    else
+        print_warn "Keine Prüfsumme gefunden: $manifest"
+        confirm "Ohne Prüfsummenprüfung fortfahren?" "N" ||
+            die "Abgebrochen."
+    fi
+
+    decompressor_from_suffix "$image"
+
+    if (( ${#DECRYPTOR[@]} > 0 )); then
+        print_text "Verschlüsseltes Image erkannt (AES-256)."
+        restore_ask_password "${image}.passcheck"
+    fi
+
+    if [[ -f "${image}.manifest.txt" ]]; then
+        src_size="$(awk -F': ' '$1 == "Quellgröße_bytes" { print $2; exit }' "${image}.manifest.txt")"
+    fi
+
+    echo
+    menu_choose "Zielart wählen:" "Auf ganze FESTPLATTE zurückspielen" "Auf einzelne PARTITION zurückspielen"
+    if [[ "$SELECTED_ITEM_INDEX" -eq 0 ]]; then
+        target_kind="disk"
+        choose_disk "Ziel"
+        tgt="$SELECTED_DISK"
+        tgt_disk="$tgt"
+        ensure_disk_not_mounted "$tgt"
+    else
+        target_kind="part"
+        choose_partition "Ziel"
+        tgt="$SELECTED_PART"
+        tgt_disk="$(source_disk_of_part "$tgt")"
+        ensure_not_mounted "$tgt"
+    fi
+
+    tgt_size="$(dev_size_bytes "$tgt")"
+
+    if [[ -n "$src_size" ]] && ((tgt_size < src_size)); then
+        die "Ziel ($tgt) ist zu klein: $(fmt_size "$tgt_size") < Quellgröße $(fmt_size "$src_size")."
+    fi
+
+    echo
+    print_kv_path "Image:        " "$image"
+    print_kv_path "Ziel:         " "$tgt"
+    print_kv "Zielgröße:     $(fmt_size "$tgt_size")"
+    echo
+    print_warn "ACHTUNG: Der komplette Inhalt von $tgt wird UNWIDERRUFLICH überschrieben!"
+    echo
+
+    confirm "Wirklich zurückspielen?" "N" || die "Vom Benutzer abgebrochen."
+
+    print_other "Wiederherstellung läuft ..."
+
+    if (( ${#DECRYPTOR[@]} > 0 )); then
+        set +e
+        "${DECRYPTOR[@]}" -in "$image" |
+            "${DECOMPRESSOR[@]}" |
+            dd of="$tgt" bs="$BLOCK_SIZE" conv=fsync \
+                ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+                ${DD_STATUS[@]+"${DD_STATUS[@]}"}
+        pipeline_status=("${PIPESTATUS[@]}")
+        set -e
+
+        if ((pipeline_status[0] != 0 || pipeline_status[1] != 0 || pipeline_status[2] != 0)); then
+            die "Wiederherstellung fehlgeschlagen (Entschlüsselung=${pipeline_status[0]}, Dekompressor=${pipeline_status[1]}, dd=${pipeline_status[2]})."
+        fi
+    else
+        set +e
+        "${DECOMPRESSOR[@]}" "$image" |
+            dd of="$tgt" bs="$BLOCK_SIZE" conv=fsync \
+                ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+                ${DD_STATUS[@]+"${DD_STATUS[@]}"}
+        pipeline_status=("${PIPESTATUS[@]}")
+        set -e
+
+        if ((pipeline_status[0] != 0 || pipeline_status[1] != 0)); then
+            die "Wiederherstellung fehlgeschlagen (Dekompressor=${pipeline_status[0]}, dd=${pipeline_status[1]})."
+        fi
+    fi
+
+    sync
+
+    if [[ "$target_kind" == "disk" ]]; then
+        partprobe "$tgt" 2>/dev/null || true
+    fi
+
+    echo
+    print_other "Image erfolgreich zurückgespielt auf $tgt."
+
+    if [[ -z "$src_size" ]] || ((tgt_size > src_size)); then
+        offer_resize "$target_kind" "$tgt" "$tgt_disk"
+    fi
+}
+
+
+
+clone_dd_error_hint() {
+    print_warn "dd-Meldung oben nennt die Fehlerseite: 'error reading' = Quelle, 'error writing' = Ziel."
+    print_warn "Ziel ist jetzt UNVOLLSTÄNDIG überschrieben (nicht bootbar) – Klon nach Fehlerbehebung wiederholen."
+    print_warn "Diagnose: Kernel-Log (dmesg) auf Gerätefehler prüfen; in einer VM: Speicherplatz des Hosts prüfen."
+}
+
+clone_disk_flow() {
+    local src
+    local tgt
+    local src_size
+    local tgt_size
+    local pipeline_status
+
+    echo
+    print_heading "=============================================="
+    print_heading "  FESTPLATTE 1:1 KLONEN"
+    print_heading "=============================================="
+    echo
+
+    choose_disk "Quelle"
+    src="$SELECTED_DISK"
+    src_size="$(dev_size_bytes "$src")"
+
+    warn_windows_source "$src"
+
+    echo
+    print_warn "Zielplatte wird VOLLSTÄNDIG überschrieben!"
+    choose_disk "Ziel"
+    tgt="$SELECTED_DISK"
+
+    [[ "$tgt" != "$src" ]] ||
+        die "Quelle und Ziel sind identisch ($src)."
+
+    tgt_size="$(dev_size_bytes "$tgt")"
+
+    if ((tgt_size < src_size)); then
+        die "Zielplatte zu klein: $(fmt_size "$tgt_size") < Quelle $(fmt_size "$src_size")."
+    fi
+
+    ensure_disk_not_mounted "$src"
+    ensure_disk_not_mounted "$tgt"
+    warn_windows_source "$tgt" || true
+
+    echo
+    print_kv_path "Quelle:  " "$src"
+    print_kv "Größe:    $(fmt_size "$src_size")"
+    print_kv_path "Ziel:    " "$tgt"
+    print_kv "Größe:    $(fmt_size "$tgt_size")"
+    echo
+    print_warn "ACHTUNG: ALLE Daten auf $tgt werden UNWIDERRUFLICH gelöscht!"
+    echo
+
+    confirm "Klonen wirklich starten?" "N" || die "Vom Benutzer abgebrochen."
+
+    print_other "Kopiervorgang läuft ..."
+
+    set +e
+    dd if="$src" of="$tgt" bs="$BLOCK_SIZE" conv=fsync \
+        ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+        ${DD_STATUS[@]+"${DD_STATUS[@]}"}
+    pipeline_status=("${PIPESTATUS[@]}")
+    set -e
+
+    if ((pipeline_status[0] != 0 || pipeline_status[1] != 0)); then
+        clone_dd_error_hint
+        die "Klonen fehlgeschlagen (dd Exit ${pipeline_status[0]})."
+    fi
+
+    sync
+    partprobe "$tgt" 2>/dev/null || true
+
+    echo
+    print_other "Festplatte erfolgreich geklont: $src -> $tgt"
+
+    if ((tgt_size > src_size)); then
+        print_text "Die Zielplatte ist größer als die Quelle."
+        offer_resize "disk" "$tgt" "$tgt"
+    fi
+}
+
+clone_partition_flow() {
+    local src
+    local tgt
+    local src_size
+    local tgt_size
+    local pipeline_status
+
+    echo
+    print_heading "=============================================="
+    print_heading "  PARTITION 1:1 KLONEN"
+    print_heading "=============================================="
+    echo
+
+    choose_partition "Quelle"
+    src="$SELECTED_PART"
+    src_size="$(dev_size_bytes "$src")"
+
+    warn_windows_source "$src"
+
+    echo
+    print_warn "Zielpartition wird VOLLSTÄNDIG überschrieben!"
+    choose_partition "Ziel"
+    tgt="$SELECTED_PART"
+
+    [[ "$tgt" != "$src" ]] ||
+        die "Quelle und Ziel sind identisch ($src)."
+
+    tgt_size="$(dev_size_bytes "$tgt")"
+
+    if ((tgt_size < src_size)); then
+        die "Zielpartition zu klein: $(fmt_size "$tgt_size") < Quelle $(fmt_size "$src_size")."
+    fi
+
+    ensure_not_mounted "$src"
+    ensure_not_mounted "$tgt"
+
+    echo
+    print_kv_path "Quelle:  " "$src"
+    print_kv "Größe:    $(fmt_size "$src_size")"
+    print_kv_path "Ziel:    " "$tgt"
+    print_kv "Größe:    $(fmt_size "$tgt_size")"
+    echo
+    print_warn "ACHTUNG: ALLE Daten auf $tgt werden UNWIDERRUFLICH gelöscht!"
+    echo
+
+    confirm "Klonen wirklich starten?" "N" || die "Vom Benutzer abgebrochen."
+
+    print_other "Kopiervorgang läuft ..."
+
+    set +e
+    dd if="$src" of="$tgt" bs="$BLOCK_SIZE" conv=fsync \
+        ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+        ${DD_STATUS[@]+"${DD_STATUS[@]}"}
+    pipeline_status=("${PIPESTATUS[@]}")
+    set -e
+
+    if ((pipeline_status[0] != 0 || pipeline_status[1] != 0)); then
+        clone_dd_error_hint
+        die "Klonen fehlgeschlagen (dd Exit ${pipeline_status[0]})."
+    fi
+
+    sync
+
+    echo
+    print_other "Partition erfolgreich geklont: $src -> $tgt"
+
+    if ((tgt_size > src_size)); then
+        print_text "Die Zielpartition ist größer als die Quelle."
+        offer_resize "part" "$tgt" "$(source_disk_of_part "$tgt")"
+    fi
+}
+
+
+
+table_backup_flow() {
+    local disk
+    local default_file
+    local dump_file
+
+    echo
+    print_heading "=============================================="
+    print_heading "  PARTITIONSTABELLE SICHERN (sfdisk-Dump)"
+    print_heading "=============================================="
+    echo
+
+    choose_disk "Platte"
+    disk="$SELECTED_DISK"
+
+    if host_dir_active; then
+        default_file="${IMAGE_HOST_DIR%/}/$(basename "$disk")-parttable-$(date +%Y%m%d-%H%M%S).txt"
+    else
+        default_file="$(pwd)/$(basename "$disk")-parttable-$(date +%Y%m%d-%H%M%S).txt"
+    fi
+    ask_output_file "$default_file"
+    dump_file="$ASK_FILE_RESULT"
+
+    if ! sfdisk -d "$disk" > "$dump_file"; then
+        rm -f -- "$dump_file"
+        die "sfdisk-Dump fehlgeschlagen."
+    fi
+
+    echo
+    print_other "Partitionstabelle gesichert:"
+    print_kv_path "   " "$dump_file"
+    if host_dir_active; then
+        print_text "Der Dump liegt im Image-Host-Ordner und wird beim"
+        print_text "Zurückspielen dort zur Auswahl gelistet."
+    else
+        print_text "Diese Datei vor dem Zurückspielen SICHERN (z. B. auf USB-Stick)!"
+    fi
+}
+
+collect_table_dumps() {
+    local dir="$1" f base rel
+    TABLE_FILES=()
+    TABLE_NAMES=()
+    for f in "$dir"/*.txt "$dir"/*/*.txt; do
+        [[ -f "$f" ]] || continue
+        case "$f" in
+            *.manifest.txt) continue ;;
+        esac
+        base="$(basename "$f")"
+        rel="${f#"$dir"/}"
+        rel="${rel%/*}"
+        if [[ "$rel" == "$base" ]]; then
+            TABLE_NAMES+=("$base")
+        else
+            TABLE_NAMES+=("$base ($rel)")
+        fi
+        TABLE_FILES+=("$f")
+    done
+}
+
+table_restore_flow() {
+    local disk
+    local dump_file
+
+    echo
+    print_heading "=============================================="
+    print_heading "  PARTITIONSTABELLE ZURÜCKSPIELEN"
+    print_heading "=============================================="
+    echo
+
+    dump_file=""
+    while [[ -z "$dump_file" ]]; do
+        if host_dir_active; then
+            collect_table_dumps "$IMAGE_HOST_DIR"
+            if [[ "${#TABLE_FILES[@]}" -gt 0 ]]; then
+                menu_choose "Dump-Datei im Image-Host-Ordner wählen:" "${TABLE_NAMES[@]}"
+                dump_file="${TABLE_FILES[$SELECTED_ITEM_INDEX]}"
+            else
+                print_warn "Keine Dump-Dateien (*.txt) im Image-Host-Ordner: $IMAGE_HOST_DIR"
+                ask_image_file "Pfad zur Dump-Datei (sfdisk-Format): "
+                dump_file="$ASK_FILE_RESULT"
+            fi
+        else
+            ask_image_file "Pfad zur Dump-Datei (sfdisk-Format): "
+            dump_file="$ASK_FILE_RESULT"
+        fi
+        if ! grep -q '^label:' "$dump_file"; then
+            print_warn "$dump_file ist kein sfdisk-Dump (keine 'label:'-Zeile) – bitte andere Datei wählen."
+            dump_file=""
+        fi
+    done
+
+    choose_disk "Ziel"
+    disk="$SELECTED_DISK"
+
+    echo
+    print_warn "ACHTUNG: Die aktuelle Partitionstabelle auf $disk wird überschrieben."
+    print_warn "Daten in den Partitionen bleiben erhalten, aber die Zuordnung ändert"
+    print_warn "sich – bei falscher Dump-Datei droht DATENVERLUST!"
+    echo
+
+    confirm "Partitionstabelle wirklich zurückspielen?" "N" ||
+        die "Vom Benutzer abgebrochen."
+
+    sfdisk --force "$disk" < "$dump_file" ||
+        die "sfdisk-Restore fehlgeschlagen."
+
+    partprobe "$disk" 2>/dev/null || true
+
+    echo
+    print_other "Partitionstabelle zurückgespielt auf $disk."
+}
+
+
+part_number_of() {
+    local part="$1"
+    local disk="$2"
+    local n
+
+    n="${part#"$disk"}"
+    n="${n#p}"
+
+    [[ "$n" =~ ^[0-9]+$ ]] ||
+        die "Partitionsnummer konnte nicht ermittelt werden ($part)."
+
+    printf '%s' "$n"
+}
+
+resize_fs_of_part() {
+    local part="$1"
+    local fs
+    local fs_rc
+
+    fs="$(fs_of_part "$part")"
+
+    case "$fs" in
+        ntfs)
+            print_text "Vergrößere NTFS-Dateisystem mit ntfsresize ..."
+            if ! ntfsresize -f "$part"; then
+                print_warn "ntfsresize fehlgeschlagen – bitte manuell prüfen."
+                return 1
+            fi
+            ;;
+        ext2|ext3|ext4)
+            print_text "Prüfe ext-Dateisystem mit e2fsck ..."
+            fs_rc=0
+            e2fsck -fp "$part" || fs_rc=$?
+            if (( fs_rc > 2 )); then
+                print_warn "e2fsck fehlgeschlagen – bitte manuell prüfen."
+                return 1
+            fi
+            print_text "Vergrößere ext-Dateisystem mit resize2fs ..."
+            if ! resize2fs "$part"; then
+                print_warn "resize2fs fehlgeschlagen – bitte manuell prüfen."
+                return 1
+            fi
+            ;;
+        vfat|fat16|fat32|exfat)
+            print_text "FAT/exFAT wird nicht automatisch vergrößert (manuell: fatresize)."
+            ;;
+        ""|swap)
+            print_text "Kein vergrößerbares Dateisystem erkannt (${fs:-unbekannt})."
+            ;;
+        *)
+            print_text "Dateisystem '$fs' – keine automatische Vergrößerung möglich."
+            ;;
+    esac
+
+    return 0
+}
+
+resize_part_to_end() {
+    local disk="$1"
+    local part="$2"
+    local n
+    local fs
+    local -a parted_opts=(-s)
+
+    n="$(part_number_of "$part" "$disk")"
+    fs="$(fs_of_part "$part")"
+
+    ensure_not_mounted "$part"
+
+    echo
+    print_text "Vergrößere $part bis zum Plattenende von $disk ..."
+
+    if parted -h 2>&1 | grep -q -- '-f, --fix'; then
+        parted_opts+=(-f)
+    fi
+
+    if ! parted "${parted_opts[@]}" "$disk" resizepart "$n" 100%; then
+        print_warn "parted resizepart fehlgeschlagen (ist $part die letzte Partition?)."
+        return 1
+    fi
+
+    partprobe "$disk" 2>/dev/null || true
+
+    print_other "Partition vergrößert: $part ist jetzt $(fmt_size "$(dev_size_bytes "$part")")."
+
+    if [[ "$fs" == "ntfs" ]]; then
+        print_text "Hinweis: Windows beim nächsten Start ggf. chkntfs/chkdsk ausführen lassen."
+    fi
+
+    resize_fs_of_part "$part" || true
+    return 0
+}
+
+offer_resize() {
+    local kind="$1"
+    local tgt="$2"
+    local tgt_disk="$3"
+
+    echo
+    if [[ "$kind" == "disk" ]]; then
+        if ! confirm "Partition auf $tgt anpassen (z. B. Windows-Partition auf größere Platte vergrößern)?" "N"; then
+            return 0
+        fi
+        choose_partition "Anzupassende Partition (auf $tgt)" "$tgt"
+        resize_part_to_end "$tgt_disk" "$SELECTED_PART" || true
+    else
+        if ! confirm "Dateisystem auf $tgt an die neue Größe anpassen (NTFS/ext)?" "N"; then
+            return 0
+        fi
+        ensure_not_mounted "$tgt"
+        resize_fs_of_part "$tgt" || true
+    fi
+}
+
+
+parse_selection() {
+    local input="$1"
+    local max="$2"
+    local -a tokens=()
+    local -a result=()
+    local token first last n
+
+    input="${input//[[:space:]]/}"
+    [[ -n "$input" ]] || return 1
+    IFS=',' read -r -a tokens <<<"$input"
+
+    for token in "${tokens[@]}"; do
+        [[ -n "$token" ]] || return 1
+        if [[ "$token" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+            first="${BASH_REMATCH[1]}"
+            last="${BASH_REMATCH[2]}"
+            ((first >= 1 && first <= last && last <= max)) || return 1
+            for ((n = first; n <= last; n++)); do
+                result+=("$n")
+            done
+        elif [[ "$token" =~ ^[0-9]+$ ]]; then
+            ((token >= 1 && token <= max)) || return 1
+            result+=("$token")
+        else
+            return 1
+        fi
+    done
+
+    mapfile -t result < <(printf '%s\n' "${result[@]}" | sort -nu)
+    SELECTED_NUMBERS=("${result[@]}")
+    return 0
+}
+
+manifest_value() {
+    local manifest="$1"
+    local key="$2"
+    local part="${3:-}"
+
+    awk -v want_part="$part" -v key="$key" '
+        BEGIN { inblock = (want_part == "") }
+        /^\[/ {
+            cur = $0
+            sub(/^\[/, "", cur); sub(/\]$/, "", cur)
+            inblock = (want_part == "" || cur == want_part)
+            next
+        }
+        inblock && index($0, key ":") == 1 {
+            val = substr($0, length(key) + 2)
+            sub(/^[ \t]+/, "", val)
+            print val
+            exit
+        }
+    ' "$manifest"
+}
+
+manifest_part_names() {
+    awk -F': ' '/^Partitionen:/ { print $2; exit }' "$1"
+}
+
+tar_is_gnu() {
+    tar --version 2>/dev/null | grep -qi gnu
+}
+
+multi_backup_run() {
+    local src_disk="$1"
+    shift
+    local sel_paths=("$@")
+    local -a part_sizes=()
+    local -a part_fses=()
+    local -a part_bases=()
+    local -a kept_files=()
+    local -a meta_files=(MANIFEST.txt)
+    local part part_size part_fs part_base part_file
+    local image_dir image_base image_path checksum
+    local dir_disk
+    local stamp n
+    local tmpdir
+    local pipeline_status
+    local count n
+    local enc_suffix=""
+
+    echo
+    print_heading "=============================================="
+    print_heading "  MEHRERE PARTITIONEN SICHERN (ein Image)"
+    print_heading "=============================================="
+    echo
+
+    warn_windows_source "$src_disk"
+
+    echo
+    print_text "Gesichert werden:"
+    for part in "${sel_paths[@]}"; do
+        part_size="$(dev_size_bytes "$part")"
+        part_fs="$(fs_of_part "$part")"
+        part_base="${part#/dev/}"
+        ensure_not_mounted "$part"
+        part_sizes+=("$part_size")
+        part_fses+=("$part_fs")
+        part_bases+=("$part_base")
+        print_kv_path "   " "$part  $(fmt_size "$part_size")"
+    done
+
+    choose_compression
+    ask_encryption
+    if ((ENCRYPT_IMAGE)); then
+        enc_suffix=".enc"
+        export CLONIE_ENC_PASS="$ENC_PASSPHRASE"
+    fi
+
+    if host_dir_active; then
+        ask_image_base "Name für den Sicherungsordner: "
+        host_backup_dir "$ASK_BASE_RESULT"
+        image_dir="$BACKUP_DIR"
+        echo
+        print_text "Gespeichert wird im Image-Host-Ordner, Unterordner:"
+        print_kv_path "   " "$image_dir"
+        [[ -w "$image_dir" ]] ||
+            die "Zielverzeichnis ist nicht beschreibbar: $image_dir"
+        dir_disk="$(target_parent_disk "$image_dir")"
+        if [[ -n "$dir_disk" && "$dir_disk" == "$src_disk" ]]; then
+            die "Zielverzeichnis liegt auf der Quellplatte ($src_disk) – das Schreiben würde die Quelle zerstören. Bitte ein Verzeichnis auf einer ANDEREN Platte wählen."
+        fi
+        stamp="$(date +%Y%m%d-%H%M%S)"
+        image_base="$(basename "$src_disk")_${stamp}"
+        n=2
+        while [[ -e "${image_dir%/}/${image_base}.tar" ]]; do
+            image_base="$(basename "$src_disk")_${stamp}_${n}"
+            n=$((n + 1))
+        done
+        image_path="${image_dir%/}/${image_base}.tar"
+    else
+        echo
+        print_text "Wohin soll das Image gespeichert werden?"
+        print_warn "WICHTIG: NICHT auf die Quellplatte ($src_disk) selbst!"
+        echo
+        ask_target_dir "$src_disk"
+        image_dir="$ASK_DIR_RESULT"
+        while true; do
+            ask_image_base
+            image_base="$ASK_BASE_RESULT"
+            image_path="${image_dir%/}/${image_base}.tar"
+            if [[ ! -e "$image_path" ]]; then
+                break
+            fi
+            print_warn "Image existiert bereits: $image_path – bitte anderen Namen wählen."
+        done
+    fi
+    checksum="${image_path}.sha256"
+
+    echo
+    print_kv_path "Quellplatte:  " "$src_disk"
+    print_kv "Partitionen:   ${SELECTED_NUMBERS[*]}"
+    print_kv "Kompression:   $COMPRESSION"
+    if ((ENCRYPT_IMAGE)); then
+        print_kv "Verschlüsselung: AES-256-CTR (openssl, PBKDF2, $ENC_ITER Iterationen)"
+    fi
+    print_kv_path "Image:        " "$image_path"
+    echo
+
+    confirm "Sicherung wirklich starten?" "N" ||
+        { print_text "Abgebrochen."; return 0; }
+
+    tmpdir="$(mktemp -d "${image_dir%/}/.clonie-mbi-XXXXXXXX")" ||
+        die "Temporäres Verzeichnis konnte nicht erstellt werden."
+    TMP_CLEANUP="$tmpdir"
+
+    {
+        printf 'Erstellt: '
+        date -Iseconds 2>/dev/null || date
+        printf 'Quellplatte: %s\n' "$src_disk"
+        printf 'Kompression: %s\n' "$COMPRESSION"
+        if ((ENCRYPT_IMAGE)); then
+            printf 'Verschlüsselung: AES-256-CTR (openssl, PBKDF2, %s Iterationen)\n' "$ENC_ITER"
+        fi
+        printf 'Blockgröße: %s\n' "$BLOCK_SIZE"
+        printf 'Partitionen: %s\n' "${part_bases[*]}"
+    } > "$tmpdir/MANIFEST.txt"
+
+    if ((ENCRYPT_IMAGE)); then
+        write_passcheck "$tmpdir/clonie-passcheck" ||
+            die "Passcheck-Member konnte nicht erstellt werden."
+        meta_files+=(clonie-passcheck)
+    fi
+
+    if sfdisk -d "$src_disk" > "$tmpdir/sfdisk-dump.txt" 2>/dev/null; then
+        meta_files+=(sfdisk-dump.txt)
+    else
+        rm -f "$tmpdir/sfdisk-dump.txt"
+        print_warn "sfdisk-Dump der Quellplatte fehlgeschlagen (wird übersprungen)."
+    fi
+
+    count=0
+    for part in "${sel_paths[@]}"; do
+        {
+            printf '\n[%s]\n' "${part_bases[$count]}"
+            printf 'Quelle: %s\n' "$part"
+            printf 'Quellgröße_bytes: %s\n' "${part_sizes[$count]}"
+            printf 'Dateisystem: %s\n' "${part_fses[$count]}"
+        } >> "$tmpdir/MANIFEST.txt"
+        count=$((count + 1))
+    done
+
+    if tar_is_gnu; then
+        tar -cf "$image_path" -C "$tmpdir" "${meta_files[@]}" ||
+            { rm -f -- "$image_path"; die "tar-Image konnte nicht erstellt werden."; }
+    fi
+
+    count=0
+    for part in "${sel_paths[@]}"; do
+        part_base="${part_bases[$count]}"
+        if [[ "$IMAGE_SUFFIX" == ".img" ]]; then
+            part_file="${part_base}.img"
+        else
+            part_file="${part_base}.img${IMAGE_SUFFIX}"
+        fi
+        part_file="${part_file}${enc_suffix}"
+
+        print_other "Sichere $part ($(fmt_size "${part_sizes[$count]}")) ..."
+
+        if ((ENCRYPT_IMAGE)); then
+            set +e
+            dd \
+                if="$part" \
+                bs="$BLOCK_SIZE" \
+                ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+                ${DD_STATUS[@]+"${DD_STATUS[@]}"} |
+                "${COMPRESSOR[@]}" |
+                openssl enc "${ENC_CIPHER_ARGS[@]}" -pass env:CLONIE_ENC_PASS > "$tmpdir/$part_file"
+            pipeline_status=("${PIPESTATUS[@]}")
+            set -e
+
+            if ((pipeline_status[0] != 0 || pipeline_status[1] != 0 || pipeline_status[2] != 0)); then
+                rm -f -- "$image_path"
+                die "Sicherung von $part fehlgeschlagen (dd=${pipeline_status[0]}, Kompressor=${pipeline_status[1]}, Verschlüsselung=${pipeline_status[2]})."
+            fi
+        else
+            set +e
+            dd \
+                if="$part" \
+                bs="$BLOCK_SIZE" \
+                ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+                ${DD_STATUS[@]+"${DD_STATUS[@]}"} |
+                "${COMPRESSOR[@]}" > "$tmpdir/$part_file"
+            pipeline_status=("${PIPESTATUS[@]}")
+            set -e
+
+            if ((pipeline_status[0] != 0 || pipeline_status[1] != 0)); then
+                rm -f -- "$image_path"
+                die "Sicherung von $part fehlgeschlagen (dd=${pipeline_status[0]}, Kompressor=${pipeline_status[1]})."
+            fi
+        fi
+
+        (
+            cd "$tmpdir" &&
+                sha256sum "$part_file" > "$part_file.sha256"
+        ) || die "SHA-256 von $part konnte nicht berechnet werden."
+
+        if tar_is_gnu; then
+            tar -rf "$image_path" -C "$tmpdir" "$part_file" "$part_file.sha256" ||
+                { rm -f -- "$image_path"; die "Anfügen von $part_file an das Image fehlgeschlagen."; }
+            rm -f -- "$tmpdir/$part_file" "$tmpdir/$part_file.sha256"
+        else
+            kept_files+=("$part_file" "$part_file.sha256")
+        fi
+        count=$((count + 1))
+    done
+
+    if ! tar_is_gnu; then
+        tar -cf "$image_path" -C "$tmpdir" "${meta_files[@]}" \
+            ${kept_files[@]+"${kept_files[@]}"} ||
+            { rm -f -- "$image_path"; die "tar-Image konnte nicht erstellt werden."; }
+    fi
+
+    rm -rf -- "$tmpdir"
+    TMP_CLEANUP=""
+
+    sync
+
+    print_text "SHA-256-Prüfsumme des Images wird berechnet ..."
+    sha256sum "$image_path" > "$checksum"
+
+    echo
+    print_other "Partitions-Image erfolgreich erstellt:"
+    print_kv_path "   Image:        " "$image_path"
+    print_kv_path "   Prüfsumme:    " "$checksum"
+    if ((ENCRYPT_IMAGE)); then
+        print_text "   Verschlüsselung: AES-256-CTR (Passcheck-Member im Image)"
+    fi
+    print_text "   Enthalten: ${part_bases[*]}"
+    print_text "   Einzeln zurückspielbar über 'Partitions-Image (Multi) zurückspielen'."
+}
+
+multi_restore_run() {
+    local image="$1"
+    local checksum tmpdir image_dir
+    local member member_base
+    local -a names=()
+    local -a sizes=()
+    local -a fses=()
+    local -a sources=()
+    local -a name_tokens=()
+    local -a sel_names=()
+    local -a sel_sizes=()
+    local -a sel_fses=()
+    local -a sel_sources=()
+    local -a sel_members=()
+    local -a targets=()
+    local -a tgt_sizes=()
+    local -a tgt_disks=()
+    local names_line part_name n i sel_input sel_norm
+    local src_size tgt tgt_size
+    local pipeline_status
+
+    echo
+    print_heading "=============================================="
+    print_heading "  PARTITIONS-IMAGE ZURÜCKSPIELEN (Multi)"
+    print_heading "=============================================="
+    echo
+
+    [[ -f "$image" ]] || die "Image nicht gefunden: $image"
+
+    checksum="${image}.sha256"
+    if [[ -f "$checksum" ]]; then
+        print_text "Prüfsumme wird geprüft ..."
+        (
+            cd "$(dirname "$image")" &&
+                sha256sum -c "$(basename "$image").sha256"
+        ) || die "Prüfsumme stimmt nicht – Image beschädigt oder falsches Ziel."
+    else
+        print_warn "Keine Prüfsumme gefunden: $checksum"
+        confirm "Ohne Prüfsummenprüfung fortfahren?" "N" ||
+            die "Abgebrochen."
+    fi
+
+    image_dir="$(dirname "$image")"
+    tmpdir="$(mktemp -d "${image_dir%/}/.clonie-mri-XXXXXXXX" 2>/dev/null)" ||
+        tmpdir=""
+    if [[ -z "$tmpdir" ]]; then
+        print_warn "Image-Ordner nicht beschreibbar – Extraktion nach ${TMPDIR:-/tmp} (Platz beachten)."
+        tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/clonie-mri-XXXXXXXX")" ||
+            die "Temporäres Verzeichnis konnte nicht erstellt werden."
+    fi
+    TMP_CLEANUP="$tmpdir"
+
+    if ! tar -xf "$image" -C "$tmpdir" MANIFEST.txt; then
+        die "Image enthält kein MANIFEST.txt – kein clonie-Mehrpartitions-Image?"
+    fi
+
+    if tar -tf "$image" | grep -qx 'clonie-passcheck'; then
+        tar -xf "$image" -C "$tmpdir" clonie-passcheck ||
+            die "Extraktion des Passcheck-Members fehlgeschlagen."
+        print_text "Verschlüsseltes Partitions-Image erkannt (AES-256)."
+        restore_ask_password "$tmpdir/clonie-passcheck"
+    elif tar -tf "$image" | grep -q '\.enc$'; then
+        print_text "Verschlüsseltes Partitions-Image erkannt (AES-256)."
+        restore_ask_password ""
+    fi
+
+    names_line="$(manifest_part_names "$tmpdir/MANIFEST.txt")"
+    if [[ -z "$names_line" ]]; then
+        die "Manifest listet keine Partitionen auf: ${image}"
+    fi
+    IFS=' ' read -r -a name_tokens <<<"$names_line"
+
+    for part_name in "${name_tokens[@]}"; do
+        names+=("$part_name")
+        sizes+=("$(manifest_value "$tmpdir/MANIFEST.txt" "Quellgröße_bytes" "$part_name")")
+        fses+=("$(manifest_value "$tmpdir/MANIFEST.txt" "Dateisystem" "$part_name")")
+        sources+=("$(manifest_value "$tmpdir/MANIFEST.txt" "Quelle" "$part_name")")
+    done
+
+    echo
+    print_heading "Partitions-Image enthält:"
+    for i in "${!names[@]}"; do
+        printf '%b\n' "${COLOR_OTHER}$((i + 1)))${COLOR_RESET} ${COLOR_TEXT}${names[$i]}${COLOR_RESET}  $(fmt_size "${sizes[$i]}")  [${fses[$i]:-unbekannt}]  (ursprünglich ${sources[$i]:-?})"
+    done
+    echo
+
+    while true; do
+        print_prompt "Wiederherzustellende Partitionen (z. B. 2 oder 1,3; 0 = zurück): "
+        if ! read -r sel_input; then
+            die "Vom Benutzer abgebrochen."
+        fi
+        sel_norm="${sel_input//[[:space:]]/}"
+        if [[ "$sel_norm" == "0" ]]; then
+            exit 0
+        fi
+        if [[ "$sel_norm" == "00" ]]; then
+            menu_quit
+        fi
+        if [[ "$sel_norm" == "000" ]]; then
+            user_abort
+        fi
+        if parse_selection "$sel_norm" "${#names[@]}"; then
+            break
+        fi
+        print_text "Ungültige Auswahl: ${sel_norm:-leer}"
+    done
+
+    tar -tf "$image" > "$tmpdir/members.list" ||
+        die "Imageliste konnte nicht gelesen werden: $image"
+    for n in "${SELECTED_NUMBERS[@]}"; do
+        part_name="${names[$((n - 1))]}"
+        member="$(grep -E "^${part_name}\.img(\.|$)" "$tmpdir/members.list" | awk 'NR == 1 { print; exit }')" || member=""
+        if [[ -z "$member" ]]; then
+            die "Keine Imagedatei für $part_name im Image gefunden."
+        fi
+        sel_names+=("$part_name")
+        sel_sizes+=("${sizes[$((n - 1))]}")
+        sel_fses+=("${fses[$((n - 1))]}")
+        sel_sources+=("${sources[$((n - 1))]}")
+        sel_members+=("$member")
+    done
+
+    local -a rows=()
+    local -a all_paths=()
+    local row dev size fs src_list
+
+    while IFS= read -r row; do
+        rows+=("$row")
+    done < <(list_partitions "")
+
+    if [[ "${#rows[@]}" -eq 0 ]]; then
+        die "Keine Partitionen gefunden (Zielwahl)."
+    fi
+
+    echo
+    print_heading "Ziele wählen:"
+    print_warn "Jede Zielpartition wird VOLLSTÄNDIG überschrieben!"
+    for i in "${!rows[@]}"; do
+        IFS='|' read -r dev size <<<"${rows[$i]}"
+        fs="$(fs_of_part "$dev")"
+        all_paths+=("$dev")
+        if [[ -n "$fs" ]]; then
+            printf '%b\n' "${COLOR_OTHER}$((i + 1)))${COLOR_RESET} ${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}  [${fs}]"
+        else
+            printf '%b\n' "${COLOR_OTHER}$((i + 1)))${COLOR_RESET} ${COLOR_TEXT}${dev}${COLOR_RESET}  ${size}  [kein FS]"
+        fi
+    done
+    echo
+    src_list="${sel_names[*]}"
+    print_text "Ziele für die Quellpartitionen (aufsteigend: ${src_list}) angeben."
+    print_text "Eine Zahl oder mehrere (z. B. 1,3 oder 1-4); Anzahl: ${#sel_names[@]}."
+
+    while true; do
+        print_prompt "Ziele (0 = zurück, 00 = beenden, 000 = abbrechen): "
+        if ! read -r sel_input; then
+            die "Vom Benutzer abgebrochen."
+        fi
+        sel_norm="${sel_input//[[:space:]]/}"
+        if [[ "$sel_norm" == "0" ]]; then
+            exit 0
+        fi
+        if [[ "$sel_norm" == "00" ]]; then
+            menu_quit
+        fi
+        if [[ "$sel_norm" == "000" ]]; then
+            user_abort
+        fi
+        if ! parse_selection "$sel_norm" "${#all_paths[@]}"; then
+            print_text "Ungültige Auswahl: ${sel_norm:-leer}"
+            continue
+        fi
+        if (( ${#SELECTED_NUMBERS[@]} != ${#sel_names[@]} )); then
+            print_text "Genau ${#sel_names[@]} Ziele angeben (nicht ${#SELECTED_NUMBERS[@]})."
+            continue
+        fi
+        break
+    done
+
+    for i in "${!sel_names[@]}"; do
+        part_name="${sel_names[$i]}"
+        src_size="${sel_sizes[$i]}"
+        member_base="$(basename "${sel_members[$i]}")"
+        tgt="${all_paths[$((SELECTED_NUMBERS[i] - 1))]}"
+        tgt_size="$(dev_size_bytes "$tgt")"
+
+        echo
+        print_kv_path "Image-Datei:  " "$member_base"
+        print_kv "Quelle:        ${sel_sources[$i]:-$part_name} ($(fmt_size "$src_size"), ${sel_fses[$i]:-unbekannt})"
+        print_kv_path "Ziel:          " "$tgt  ($(fmt_size "$tgt_size"))"
+
+        if ((tgt_size < src_size)); then
+            die "Zielpartition zu klein: $(fmt_size "$tgt_size") < Quellgröße $(fmt_size "$src_size")."
+        fi
+
+        ensure_not_mounted "$tgt"
+
+        targets+=("$tgt")
+        tgt_sizes+=("$tgt_size")
+        tgt_disks+=("$(source_disk_of_part "$tgt")")
+    done
+
+    echo
+    print_heading "Zurückgespielt werden:"
+    for i in "${!sel_names[@]}"; do
+        print_kv_path "   " "${sel_names[$i]}  ->  ${targets[$i]}  ($(fmt_size "${tgt_sizes[$i]}"))"
+    done
+    echo
+    print_warn "ACHTUNG: ALLE Daten auf den genannten Zielen werden UNWIDERRUFLICH überschrieben!"
+    echo
+
+    if (( ${#sel_names[@]} == 1 )); then
+        confirm "Wirklich 1 Partition zurückspielen?" "N" || die "Vom Benutzer abgebrochen."
+    else
+        confirm "Wirklich ${#sel_names[@]} Partitionen zurückspielen?" "N" || die "Vom Benutzer abgebrochen."
+    fi
+
+    for i in "${!sel_names[@]}"; do
+        part_name="${sel_names[$i]}"
+        member="${sel_members[$i]}"
+        member_base="$(basename "$member")"
+        tgt="${targets[$i]}"
+        tgt_size="${tgt_sizes[$i]}"
+        src_size="${sel_sizes[$i]}"
+
+        print_other "Extrahiere $member_base ..."
+        if grep -Fqx "${member}.sha256" "$tmpdir/members.list"; then
+            tar -xf "$image" -C "$tmpdir" "$member" "${member}.sha256" ||
+                die "Extraktion von $member_base fehlgeschlagen."
+        else
+            tar -xf "$image" -C "$tmpdir" "$member" ||
+                die "Extraktion von $member_base fehlgeschlagen."
+        fi
+
+        if [[ -f "$tmpdir/${member_base}.sha256" ]]; then
+            print_text "Prüfsumme von $member_base wird geprüft ..."
+            (
+                cd "$tmpdir" &&
+                    sha256sum -c "${member_base}.sha256"
+            ) || die "Prüfsumme von $member_base stimmt nicht – Image beschädigt."
+        else
+            print_warn "Keine Prüfsumme für $member_base im Image."
+        fi
+
+        decompressor_from_suffix "$member_base"
+
+        print_other "Wiederherstellung läuft ($part_name -> $tgt) ..."
+
+        if (( ${#DECRYPTOR[@]} > 0 )); then
+            set +e
+            "${DECRYPTOR[@]}" -in "$tmpdir/$member_base" |
+                "${DECOMPRESSOR[@]}" |
+                dd of="$tgt" bs="$BLOCK_SIZE" conv=fsync \
+                    ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+                    ${DD_STATUS[@]+"${DD_STATUS[@]}"}
+            pipeline_status=("${PIPESTATUS[@]}")
+            set -e
+
+            if ((pipeline_status[0] != 0 || pipeline_status[1] != 0 || pipeline_status[2] != 0)); then
+                die "Wiederherstellung fehlgeschlagen (Entschlüsselung=${pipeline_status[0]}, Dekompressor=${pipeline_status[1]}, dd=${pipeline_status[2]})."
+            fi
+        else
+            set +e
+            "${DECOMPRESSOR[@]}" "$tmpdir/$member_base" |
+                dd of="$tgt" bs="$BLOCK_SIZE" conv=fsync \
+                    ${DD_FULLBLOCK[@]+"${DD_FULLBLOCK[@]}"} \
+                    ${DD_STATUS[@]+"${DD_STATUS[@]}"}
+            pipeline_status=("${PIPESTATUS[@]}")
+            set -e
+
+            if ((pipeline_status[0] != 0 || pipeline_status[1] != 0)); then
+                die "Wiederherstellung fehlgeschlagen (Dekompressor=${pipeline_status[0]}, dd=${pipeline_status[1]})."
+            fi
+        fi
+        sync
+
+        echo
+        print_other "$part_name erfolgreich zurückgespielt auf $tgt."
+
+        if ((tgt_size > src_size)); then
+            offer_resize "part" "$tgt" "${tgt_disks[$i]}"
+        fi
+
+        rm -f -- "$tmpdir/$member_base" "$tmpdir/${member_base}.sha256"
+    done
+
+    rm -rf -- "$tmpdir"
+    TMP_CLEANUP=""
+
+    echo
+    print_other "Alle gewählten Partitionen wurden zurückgespielt."
+}
+
+
+main_menu() {
+    local options=(
+        "Festplatte 1:1 klonen"
+        "Partition 1:1 klonen"
+        "Image von Festplatte erstellen (komprimiert)"
+        "Image von Partition(en) erstellen (komprimiert)"
+        "Image zurückspielen (recover)"
+        "Partitionstabelle sichern (sfdisk-Dump)"
+        "Partitionstabelle zurückspielen"
+        "Image-Host-Ordner wählen/wechseln"
+        "Festplatten erneut einlesen"
+    )
+
+    local rc
+
+    while true; do
+        echo
+        print_heading "=============================================="
+        print_heading "  clonie $VERSION – Festplatte/Partition/Image"
+        print_heading "=============================================="
+        print_kv "System:        " "${DISTRO} (${PACKAGE_MANAGER:-kein Paketmanager})"
+        if [[ -n "$IMAGE_HOST_DIR" ]]; then
+            print_kv_path "Image-Ordner:  " "$IMAGE_HOST_DIR"
+        else
+            print_kv "Image-Ordner:  " "(nicht festgelegt)"
+        fi
+        echo
+
+        MENU_TOP="1"
+        menu_choose "Aktion wählen:" "${options[@]}"
+        if [[ "$MENU_ACTION" == "back" ]]; then
+            MENU_ACTION=""
+            continue
+        fi
+        MENU_TOP=""
+
+        rc=0
+        case "$SELECTED_ITEM_INDEX" in
+            0) ( clone_disk_flow ) || rc=$? ;;
+            1) ( clone_partition_flow ) || rc=$? ;;
+            2) ( create_image "disk" ) || rc=$? ;;
+            3) ( create_image "part" ) || rc=$? ;;
+            4) ( restore_image ) || rc=$? ;;
+            5) ( table_backup_flow ) || rc=$? ;;
+            6) ( table_restore_flow ) || rc=$? ;;
+            7)
+                rc=0
+                ( choose_image_host "menu" ) || rc=$?
+                if ((rc == 43)); then
+                    host_dir_reload
+                    rc=0
+                fi
+                ;;
+            8) ( rescan_disks ) || rc=$? ;;
+        esac
+
+        if [[ "$rc" -eq 42 ]]; then
+            exit 0
+        fi
+        if [[ "$rc" -ne 0 ]]; then
+            exit "$rc"
+        fi
+
+        echo
+        print_prompt "Eingabetaste fürs Hauptmenü ..."
+        read -r || { print_other "Auf Wiedersehen."; exit 0; }
+    done
+}
+
+main() {
+    local want_help=0
+    local want_version=0
+
+    while (( $# > 0 )); do
+        case "$1" in
+            -h|--help)
+                want_help=1
+                ;;
+            -v|-V|--version)
+                want_version=1
+                ;;
+            -nc|--no-color)
+                NO_COLOR=1
+                ;;
+            -de|-en)
+                ;;
+            *)
+                init_colors
+                print_warn "Unbekanntes Argument: $1"
+                usage
+                exit 2
+                ;;
+        esac
+        shift
+    done
+
+    init_colors
+
+    if ((want_help)); then
+        usage
+        exit 0
+    fi
+    if ((want_version)); then
+        printf 'clonie %s\n' "$VERSION"
+        exit 0
+    fi
+
+    detect_system
+    require_root
+    check_tools
+    set_dd_flags
+
+    HOST_DIR_STATE="$(mktemp "${TMPDIR:-/tmp}/clonie-host-XXXXXXXX" 2>/dev/null)" || HOST_DIR_STATE=""
+
+    local rc=0
+    ( choose_image_host "start" ) || rc=$?
+    if ((rc == 42)); then
+        exit 0
+    fi
+    if ((rc != 0)); then
+        exit "$rc"
+    fi
+    host_dir_reload
+
+    main_menu
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
