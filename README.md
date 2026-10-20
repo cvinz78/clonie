@@ -29,8 +29,7 @@ Windows-Platten (NTFS, MSR, EFI, WinRE).
 10. [Exit-Codes](#exit-codes)
 11. [Sprache (DE/EN)](#sprache-deen)
 12. [Farben](#farben)
-13. [Tests](#tests)
-14. [Lizenz](#lizenz)
+13. [Lizenz](#lizenz)
 
 ---
 
@@ -297,13 +296,6 @@ Farbige Ausgabe gemäß Farbschema (Überschriften grün, Text/Geräte
 cyan, Warnungen rot, Dateien/Befehle lila). Abschaltbar per
 `-nc`/`--no-color` (alte Konsolen) oder `NO_COLOR=1` in der Umgebung.
 
-## Tests
-
-`tests/container-test.sh` enthält eine End-to-End-Suite (Klonen,
-Image/Restore, Partitionierer, Multi-Restore, Verschlüsselung), die in
-Wegwerf-Docker-Containern gegen Loop-Devices läuft – echte Platten
-werden nie berührt.
-
 ## Lizenz
 
 Copyright (C) 2026 cvinz78
@@ -346,8 +338,7 @@ Ubuntu/Debian, Alpine) – also for Windows disks (NTFS, MSR, EFI, WinRE).
 10. [Exit Codes](#exit-codes)
 11. [Language (DE/EN)](#language-deen)
 12. [Colors](#colors)
-13. [Tests](#tests)
-14. [License](#license)
+13. [License](#license)
 
 ---
 
@@ -607,13 +598,6 @@ languages.
 Colored output according to the color scheme (headings green,
 text/devices cyan, warnings red, files/commands magenta). Disable via
 `-nc`/`--no-color` (old consoles) or `NO_COLOR=1` in the environment.
-
-## Tests
-
-`tests/container-test.sh` contains an end-to-end suite (cloning,
-image/restore, partitioner, multi-restore, encryption) that runs in
-throwaway Docker containers against loop devices – real disks are
-never touched.
 
 ## License
 
