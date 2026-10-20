@@ -254,7 +254,7 @@ PBKDF2), angewendet nach der Kompression – Endung `.enc`.
 
 ## Voraussetzungen
 
-- Linux, **root**-Rechte (`sudo`), Bash
+- Linux, **root**-Rechte (`sudo`)
 - **Basis-Tools:** `lsblk`, `blkid`, `blockdev`, `dd`, `sha256sum`,
   `sfdisk`, `partprobe`, `parted`, `mountpoint`, `sync`, `awk`,
   `grep`, `sed`
@@ -558,7 +558,7 @@ applied after compression – suffix `.enc`.
 
 ## Requirements
 
-- Linux, **root** privileges (`sudo`), Bash
+- Linux, **root** privileges (`sudo`)
 - **Base tools:** `lsblk`, `blkid`, `blockdev`, `dd`, `sha256sum`,
   `sfdisk`, `partprobe`, `parted`, `mountpoint`, `sync`, `awk`,
   `grep`, `sed`
