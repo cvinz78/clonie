@@ -29,7 +29,8 @@ Windows-Platten (NTFS, MSR, EFI, WinRE).
 10. [Exit-Codes](#exit-codes)
 11. [Sprache (DE/EN)](#sprache-deen)
 12. [Farben](#farben)
-13. [Lizenz](#lizenz)
+13. [Tests](#tests)
+14. [Lizenz](#lizenz)
 
 ---
 
@@ -254,7 +255,7 @@ PBKDF2), angewendet nach der Kompression – Endung `.enc`.
 
 ## Voraussetzungen
 
-- Linux, **root**-Rechte (`sudo`)
+- Linux, **root**-Rechte (`sudo`), Bash
 - **Basis-Tools:** `lsblk`, `blkid`, `blockdev`, `dd`, `sha256sum`,
   `sfdisk`, `partprobe`, `parted`, `mountpoint`, `sync`, `awk`,
   `grep`, `sed`
@@ -295,6 +296,13 @@ hinweg wiederherstellbar sind.
 Farbige Ausgabe gemäß Farbschema (Überschriften grün, Text/Geräte
 cyan, Warnungen rot, Dateien/Befehle lila). Abschaltbar per
 `-nc`/`--no-color` (alte Konsolen) oder `NO_COLOR=1` in der Umgebung.
+
+## Tests
+
+`tests/container-test.sh` enthält eine End-to-End-Suite (Klonen,
+Image/Restore, Partitionierer, Multi-Restore, Verschlüsselung), die in
+Wegwerf-Docker-Containern gegen Loop-Devices läuft – echte Platten
+werden nie berührt.
 
 ## Lizenz
 
@@ -338,7 +346,8 @@ Ubuntu/Debian, Alpine) – also for Windows disks (NTFS, MSR, EFI, WinRE).
 10. [Exit Codes](#exit-codes)
 11. [Language (DE/EN)](#language-deen)
 12. [Colors](#colors)
-13. [License](#license)
+13. [Tests](#tests)
+14. [License](#license)
 
 ---
 
@@ -558,7 +567,7 @@ applied after compression – suffix `.enc`.
 
 ## Requirements
 
-- Linux, **root** privileges (`sudo`)
+- Linux, **root** privileges (`sudo`), Bash
 - **Base tools:** `lsblk`, `blkid`, `blockdev`, `dd`, `sha256sum`,
   `sfdisk`, `partprobe`, `parted`, `mountpoint`, `sync`, `awk`,
   `grep`, `sed`
@@ -598,6 +607,13 @@ languages.
 Colored output according to the color scheme (headings green,
 text/devices cyan, warnings red, files/commands magenta). Disable via
 `-nc`/`--no-color` (old consoles) or `NO_COLOR=1` in the environment.
+
+## Tests
+
+`tests/container-test.sh` contains an end-to-end suite (cloning,
+image/restore, partitioner, multi-restore, encryption) that runs in
+throwaway Docker containers against loop devices – real disks are
+never touched.
 
 ## License
 
